@@ -28,11 +28,19 @@ local EVENT = {
   turn_end = "turn_end", error = "error",
 }
 
+-- noctalia launches us with the GUI-session PATH, which lacks ~/.local/bin (it's
+-- added by the user's shell profile, not the graphical session). Claude Code's
+-- own session hooks live there (memd, agent-scaffold, …), so a /cc session would
+-- hit "command not found" that a terminal-started one never does. Prepend it to
+-- every launch so a /cc session inherits the same PATH as a terminal. Fixed,
+-- trusted literal — $HOME/$PATH are meant to expand in the `/bin/sh -c` context.
+local PATH_PREFIX = 'PATH="$HOME/.local/bin:$PATH" '
+
 -- claude only. [CEILING]: no registry — add a backends table + a second parse()
 -- branch when ollama/router lands; this is the seam, zero call-site change needed.
 local function backend_command(prompt)
   -- Claude Code: -p (print/non-interactive) requires --verbose for stream-json.
-  return "claude --output-format stream-json --verbose -p " .. shq(prompt)
+  return PATH_PREFIX .. "claude --output-format stream-json --verbose -p " .. shq(prompt)
 end
 
 -- one stream-json line → an EVENT (or nil). Claude Code emits one JSON object per
@@ -141,12 +149,12 @@ function onActivate(id)
   -- here — doing so would register a phantom session the hooks never update or
   -- retire. cc.state is only for the hookless quick-ask stream below.
   if id == "continue" then
-    noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " --continue")
+    noctalia.runInTerminal(PATH_PREFIX .. "claude " .. CONTEXT_FLAGS .. " --continue")
     return
   end
   local task = id:match("^task:(.*)$")
   if task then
-    noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " " .. shq(task))
+    noctalia.runInTerminal(PATH_PREFIX .. "claude " .. CONTEXT_FLAGS .. " " .. shq(task))
     return
   end
   local ask = id:match("^ask:(.*)$")
