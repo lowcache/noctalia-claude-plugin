@@ -56,5 +56,23 @@ returns `error: no plugin entry matched`, which confirms the dispatch path.)
 - Privacy-tier gate keyed to backend locality (when a local backend lands).
 - Re-verify `parse()` field names if a claude version changes the stream-json shape.
 
+## Development
+
+`nix/` carries a self-contained luau toolchain for testing the widget logic
+(`pulse.luau`) offline — no noctalia reload needed to catch a regression in the
+state machine or the token-burn tooltip formatting.
+
+```sh
+nix run ./nix#test        # run the widget specs (from the repo root)
+nix develop ./nix         # drop into a shell with `luau` + `pulse-test` on PATH
+```
+
+The runner concatenates `tests/prelude.luau` (stubs the `barWidget`/`noctalia`
+API), the real `pulse.luau`, and `tests/spec.luau` into one chunk and runs it
+under `luau`, asserting on what the stubbed `barWidget` records. It exercises the
+widget's true public surface (`onIpc` + `barWidget`), so the specs validate the
+shipping source, not a copy. It tests logic only — the live noctalia integration
+(IPC dispatch, real bar rendering) still needs an install + reload.
+
 Design rationale captured in nix-config `.memory` (decision:
 claude-code-plugin-v1-design).
