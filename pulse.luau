@@ -18,7 +18,7 @@ local VISUAL = {
   text            = { glyph = "message-dots",   color = "primary",  tip = "Claude: responding" },
   tool_start      = { glyph = "tool",           color = "tertiary", tip = "Claude: running a tool" },
   needs_attention = { glyph = "bell-ringing",   color = "error",    tip = "Claude needs you" },
-  turn_end        = { glyph = "circle-check",   color = "primary",  tip = "Claude: done" },
+  turn_end        = { glyph = "bell",           color = "primary",  tip = "Claude: done — ready for you" },
   error           = { glyph = "alert-triangle", color = "error",    tip = "Claude: error" },
 }
 
