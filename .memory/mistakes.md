@@ -18,3 +18,8 @@ Review of `shim/noctalia-mcp.py` and launcher found 6 issues; all fixed and veri
 Verification: adversarial MCP sequence (garbage JSON, non-dict, non-string args, unknown tool) — server survived, returned proper error objects (rc=0). Launcher loads cleanly on reload (no luau errors).
 
 Lesson: shim is untrusted-input boundary (stdin JSON-RPC) — validate types/shape, return error objects, never assume dict/str.
+
+### 2026-06-26 — remember tool: second-resolution filename collision + non-atomic write
+**Symptom:** Two concurrent Claude sessions (each spawning their own shim subprocess) calling `remember` within the same second produce files with identical names (`{YYYYMMDD-HHMMSS}-{slug}.md`), causing one note to silently overwrite the other. A memd inbox sweep running between a file's open and close could read a partially-written note.
+**Root cause:** Filename used `datetime.now().strftime("%Y%m%d-%H%M%S")` (second resolution) — two processes collide at the same second. File was written directly to the inbox path without atomicity.
+**Prevention:** Use microsecond-resolution timestamp + PID in filename (`{YYYYMMDD-HHMMSSffffff}-{slug}-{pid}.md`). Publish via `os.replace()` from a temp file written *outside* the inbox directory — inbox sees a complete file or nothing. Any shared file-system path written by multiple shim instances (one per Claude session) must be treated as concurrent from the start.
