@@ -84,6 +84,90 @@ def _remember(a):
         return f"error: {e}"
 
 
+# ── additional senses (read-only) ────────────────────────────────────────────
+def _get_power(a):
+    """Battery level/status + AC state, as JSON. battery=null if none present."""
+    base = "/sys/class/power_supply"
+    try:
+        names = os.listdir(base)
+    except OSError as e:
+        return f"error: {e}"
+
+    def rd(node, field):
+        try:
+            with open(os.path.join(base, node, field)) as fh:
+                return fh.read().strip()
+        except OSError:
+            return None
+
+    out = {}
+    bats = sorted(n for n in names if n.startswith("BAT"))
+    out["battery"] = (
+        {b: {"capacity": rd(b, "capacity"), "status": rd(b, "status")} for b in bats}
+        if bats else None
+    )
+    for ac in ("AC", "ACAD", "ADP1", "AC0"):
+        online = rd(ac, "online")
+        if online is not None:
+            out["ac_online"] = online == "1"
+            break
+    return json.dumps(out)
+
+
+def _get_network(a):
+    """Connectivity + the active Wi-Fi connection (SSID/signal), as JSON."""
+    state = sh(["nmcli", "-t", "-f", "STATE,CONNECTIVITY", "general"])
+    if state.startswith("error:"):
+        return state
+    wifi = sh(["nmcli", "-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"])
+    active = next((l for l in wifi.splitlines() if l.startswith("yes:")), "")
+    return json.dumps({"general": state, "wifi_active": active})
+
+
+def _get_processes(a):
+    """Top processes by CPU (header + top 10), as text."""
+    out = sh(["ps", "-eo", "pid,pcpu,pmem,comm", "--sort=-pcpu"])
+    if out.startswith("error:"):
+        return out
+    return "\n".join(out.splitlines()[:11])
+
+
+# ── additional hands (mutate shared desktop state) ────────────────────────────
+# These race on the single real desktop across concurrent sessions (last write
+# wins) — inherent to a shared environment, not a shim bug. Each is a stateless
+# subprocess, so the shim itself stays concurrency-safe.
+def _focus_window(a):
+    wid = str(a.get("id") or "").strip()
+    if not wid:
+        return "error: 'id' is required"
+    return sh(["niri", "msg", "action", "focus-window", "--id", wid])
+
+
+def _switch_workspace(a):
+    ref = str(a.get("reference") or "").strip()
+    if not ref:
+        return "error: 'reference' is required"
+    return sh(["niri", "msg", "action", "focus-workspace", ref])
+
+
+def _move_to_workspace(a):
+    ref = str(a.get("reference") or "").strip()
+    if not ref:
+        return "error: 'reference' is required"
+    return sh(["niri", "msg", "action", "move-column-to-workspace", ref])
+
+
+def _set_wallpaper(a):
+    """Set a wallpaper by path, or switch to a random one if no path given."""
+    path = str(a.get("path") or "").strip()
+    conn = str(a.get("connector") or "").strip()
+    if path:
+        argv = ["noctalia", "msg", "wallpaper-set"] + ([conn] if conn else []) + [path]
+    else:
+        argv = ["noctalia", "msg", "wallpaper-random"] + ([conn] if conn else [])
+    return sh(argv)
+
+
 # name -> (description, inputSchema properties, handler). Commands verified against
 # noctalia 5.0.0 (`noctalia msg --help`) and `niri msg --help`.
 TOOLS = {
@@ -107,6 +191,21 @@ TOOLS = {
         "Noctalia shell-internal state (active panel, theme mode, etc.) as JSON.",
         {},
         lambda a: sh(["noctalia", "msg", "status"]),
+    ),
+    "get_power": (
+        "Battery level/status and AC state as JSON (battery=null on desktops).",
+        {},
+        _get_power,
+    ),
+    "get_network": (
+        "Connectivity and the active Wi-Fi connection (SSID/signal) as JSON.",
+        {},
+        _get_network,
+    ),
+    "get_processes": (
+        "Top processes by CPU (pid, %cpu, %mem, command) as text.",
+        {},
+        _get_processes,
     ),
     # ── memory (durable, cross-session) ───────────────────────────────────────
     "remember": (
@@ -145,6 +244,32 @@ TOOLS = {
             "name": {"type": "string", "description": "Scheme name/id for that source"},
         },
         lambda a: sh(["noctalia", "msg", "color-scheme-set", a.get("source", "builtin"), a.get("name", "")]),
+    ),
+    "focus_window": (
+        "Focus a window by its niri id (ids come from get_window / niri windows).",
+        {"id": {"type": "string", "required": True,
+                "description": "niri window id to focus"}},
+        _focus_window,
+    ),
+    "switch_workspace": (
+        "Switch to a workspace by reference (index like '2', or its name).",
+        {"reference": {"type": "string", "required": True,
+                       "description": "Workspace index or name"}},
+        _switch_workspace,
+    ),
+    "move_to_workspace": (
+        "Move the focused column to a workspace by reference (index or name).",
+        {"reference": {"type": "string", "required": True,
+                       "description": "Target workspace index or name"}},
+        _move_to_workspace,
+    ),
+    "set_wallpaper": (
+        "Set the wallpaper to an image path, or switch to a random one if no path.",
+        {"path": {"type": "string",
+                  "description": "Image path; omit for a random wallpaper"},
+         "connector": {"type": "string",
+                       "description": "Output connector (optional; default all)"}},
+        _set_wallpaper,
     ),
 }
 
