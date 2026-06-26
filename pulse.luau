@@ -1,9 +1,11 @@
--- The attention pulse (bar widget) — a glanceable live readout of Claude's state.
--- Two feeds converge on apply():
---   • cc.luau writes "cc.state" (the launcher/ask path) → watched here.
+-- The attention pulse (bar widget) — a glanceable live readout of Claude across
+-- ALL active sessions. Two feeds converge on the session table:
 --   • Claude Code hooks fire the plugin-dispatch IPC → onIpc here (the reflex):
---       noctalia msg plugin lowcache/claude:pulse all <event>
---     (verified against noctalia 5.0.0 source; see hooks/settings.snippet.json.)
+--       noctalia msg plugin lowcache/claude:pulse all <event> [payload]
+--     payload = "model,in,out,cacheCreate,cacheRead,session" (hooks/pulse.py).
+--     Each real session is tracked by its id; SessionEnd removes it.
+--   • cc.luau writes "cc.state" (the launcher quick-ask) → watched here as one
+--     ephemeral pseudo-session ("ask"), removed when the ask completes.
 --
 -- Bar widgets do DISCRETE state (glyph/color/tooltip), not per-frame animation.
 -- The bar API is the `barWidget.*` table (NOT `widget`). Glyph names are Tabler
@@ -22,13 +24,23 @@ local VISUAL = {
   error           = { glyph = "alert-triangle", color = "error",    tip = "Claude: error" },
 }
 
--- Token-burn telemetry (hook reflex path only). hooks/pulse.py sends a space-free
--- CSV payload "model,in,out,cacheCreate,cacheRead,session" alongside the event.
--- We retain the last telemetry so high-frequency events that arrive without a
--- fresh parse still render the current burn; `idle` (only fired at SessionStart)
--- clears it so a new session never shows the previous session's numbers — the bar
--- widget is a persistent subprocess that outlives any single Claude session.
-local last_tel = nil
+-- With several sessions in different states, the bar shows the most urgent one:
+-- a session that needs you outranks one merely working, which outranks one idle.
+local STATE_PRIO = {
+  needs_attention = 6, error = 5, tool_start = 4,
+  turn_start = 3, text = 3, turn_end = 2, idle = 1,
+}
+-- Compact per-session words for the multi-session tooltip.
+local STATE_WORD = {
+  idle = "idle", turn_start = "thinking", text = "responding",
+  tool_start = "tool", needs_attention = "needs you",
+  turn_end = "done", error = "error",
+}
+
+-- sid -> { sid, state, model, tin, tout, cr, seq }. `seq` is a monotonic counter
+-- (no os.time dependency in the widget sandbox) used to order by recency.
+local sessions = {}
+local seq = 0
 
 local function split(s, sep)
   local out = {}
@@ -43,39 +55,116 @@ local function kfmt(s)
   return tostring(math.floor(n))
 end
 
--- tel = "model,in,out,cacheCreate,cacheRead,session". "in" (fresh prompt tokens)
--- is tiny next to cache reads, so reporting it alone understates the burn. Show
--- full-rate input (fresh + cache-create) vs output, and cached reads separately
--- (cheap, repeated context) so the figure reflects what the turn actually cost.
-local function compose(tip, tel)
-  if not tel or tel == "" then return tip end
+-- "model,in,out,cacheCreate,cacheRead,session" -> a session delta, or nil. "in"
+-- (fresh prompt tokens) is tiny next to cache reads, so the displayed input is
+-- fresh + cache-create (full-rate work); cache reads are tracked separately.
+local function parse_payload(tel)
+  if not tel or tel == "" then return nil end
   local f = split(tel, ",")
-  local model = (f[1] and f[1] ~= "") and f[1] or "?"
-  local tin = (tonumber(f[2]) or 0) + (tonumber(f[4]) or 0)
-  local cached = tonumber(f[5]) or 0
-  local line = string.format("%s · %s in / %s out", model, kfmt(tin), kfmt(f[3]))
-  if cached > 0 then line = line .. " · " .. kfmt(cached) .. " cached" end
-  return tip .. "\n" .. line
+  local sid = f[6]
+  if not sid or sid == "" then return nil end
+  return {
+    sid = sid,
+    model = (f[1] and f[1] ~= "") and f[1] or "?",
+    tin = (tonumber(f[2]) or 0) + (tonumber(f[4]) or 0),
+    tout = tonumber(f[3]) or 0,
+    cr = tonumber(f[5]) or 0,
+  }
 end
 
-local function apply(s, tel)
-  local v = VISUAL[s] or VISUAL.idle
-  if s == "idle" then last_tel = nil end
-  if tel ~= nil and tel ~= "" then last_tel = tel end
+local function has_burn(s)
+  return s.model and s.model ~= "?" and ((s.tin or 0) + (s.tout or 0)) > 0
+end
+
+local function burn_line(s)
+  local l = string.format("%s · %s in / %s out", s.model, kfmt(s.tin), kfmt(s.tout))
+  if (s.cr or 0) > 0 then l = l .. " · " .. kfmt(s.cr) .. " cached" end
+  return l
+end
+
+local function ordered()
+  local arr = {}
+  for _, s in pairs(sessions) do arr[#arr + 1] = s end
+  table.sort(arr, function(a, b) return (a.seq or 0) > (b.seq or 0) end)
+  return arr
+end
+
+local function render()
+  local arr = ordered()
+  local count = #arr
+
+  local best, bestp = "idle", 0
+  for _, s in ipairs(arr) do
+    local p = STATE_PRIO[s.state] or 0
+    if p > bestp then bestp = p; best = s.state end
+  end
+  local v = VISUAL[best] or VISUAL.idle
   barWidget.setGlyph(v.glyph)
   barWidget.setGlyphColor(v.color)
-  barWidget.setTooltip(compose(v.tip, last_tel))
+
+  local tip
+  if count == 0 then
+    tip = VISUAL.idle.tip
+  elseif count == 1 then
+    local s = arr[1]
+    local sv = VISUAL[s.state] or VISUAL.idle
+    tip = has_burn(s) and (sv.tip .. "\n" .. burn_line(s)) or sv.tip
+  else
+    local lines = { string.format("Claude — %d sessions", count) }
+    local Tin, Tout = 0, 0
+    for _, s in ipairs(arr) do
+      local line = s.sid .. " · " .. (STATE_WORD[s.state] or s.state)
+      if has_burn(s) then
+        line = line .. " · " .. s.model .. " " .. kfmt(s.tin) .. "/" .. kfmt(s.tout)
+        Tin = Tin + s.tin; Tout = Tout + s.tout
+      end
+      lines[#lines + 1] = line
+    end
+    if (Tin + Tout) > 0 then
+      lines[#lines + 1] = string.format("Σ %s in / %s out", kfmt(Tin), kfmt(Tout))
+    end
+    tip = table.concat(lines, "\n")
+  end
+  barWidget.setTooltip(tip)
 end
 
--- launcher/ask path: cc.luau publishes the normalized event name here (no payload).
+local function touch(sid, state, p)
+  seq = seq + 1
+  local s = sessions[sid] or { sid = sid }
+  s.state = state
+  s.seq = seq
+  if p then
+    s.model, s.tin, s.tout, s.cr = p.model, p.tin, p.tout, p.cr
+  end
+  sessions[sid] = s
+end
+
+-- launcher quick-ask path (no session id, no telemetry). Ephemeral: shown while
+-- streaming, dropped when it finishes — the answer is delivered via notify, so a
+-- lingering "done" would only inflate the session count.
 noctalia.state.watch("cc.state", function(s)
-  if type(s) == "string" then apply(s) end
+  if type(s) ~= "string" then return end
+  if s == "turn_end" or s == "error" then
+    sessions["ask"] = nil
+  else
+    touch("ask", s, nil)
+  end
+  render()
 end)
 
--- hook reflex path. The dispatcher calls onIpc(event, payload); payload is the
--- telemetry CSV (or absent for events with nothing to report yet).
+-- hook reflex path: per-session state + token telemetry, full lifecycle. The
+-- dispatcher always tags the event with a session id; `session_end` (the Claude
+-- Code SessionEnd hook) retires the session so stale entries never accumulate.
 function onIpc(event, payload)
-  if type(event) == "string" then apply(event, payload) end
+  if type(event) ~= "string" then return end
+  local p = parse_payload(payload)
+  local sid = (p and p.sid) or "default"
+  if event == "session_end" then
+    sessions[sid] = nil
+  else
+    touch(sid, event, p)
+  end
+  render()
 end
 
-apply("idle")
+render()

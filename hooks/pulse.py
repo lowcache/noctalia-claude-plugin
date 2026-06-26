@@ -17,6 +17,10 @@ widget (pulse.luau) parses:
 
     model,in,out,cacheCreate,cacheRead,session
 
+The `session` (short id) tags EVERY event, so the widget can track each concurrent
+session separately. The matching SessionEnd hook fires `session_end`, which retires
+the session in the widget and drops its token cache here.
+
 Token accounting is incremental: a per-session cache in $XDG_RUNTIME_DIR stores the
 last byte offset + running sums, so each hook reads only newly-appended transcript
 lines (O(delta), not O(whole transcript)). Transcript JSONL only appends; if it
@@ -27,8 +31,7 @@ still fires the bare event with no payload and never exits non-zero — a hook m
 never block Claude or surface an error.
 
 [CEILING]: token-only telemetry; dollar cost needs a per-model price table (drifts;
-deferred). The `session` field is wire-ready for multi-session disambiguation (next
-roadmap item) but the widget aggregates a single session for now.
+deferred).
 """
 import json
 import os
@@ -89,43 +92,59 @@ def _accumulate(transcript, session):
     return st
 
 
-def _payload():
-    """Build the CSV payload, or None when there is nothing meaningful to show."""
+def _payload(data, event):
+    """Build the CSV payload, or None when the event can't be attributed.
+
+    Requires only a session id — every tagged event carries it so the widget can
+    track sessions individually. Token figures are best-effort (zeros when the
+    transcript is unreadable or empty); the widget decides whether to render them.
+    `session_end` skips the transcript parse (the id alone retires the session).
+    """
+    session = data.get("session_id") or ""
+    if not session:
+        return None
+    st = {"in": 0, "out": 0, "cc": 0, "cr": 0, "model": ""}
+    transcript = data.get("transcript_path") or ""
+    if event != "session_end" and transcript and os.path.isfile(transcript):
+        try:
+            st = _accumulate(transcript, session)
+        except OSError:
+            pass
+    model = st["model"].replace("claude-", "") if st["model"] else "?"
+    short = session.split("-")[0]
+    return f"{model},{st['in']},{st['out']},{st['cc']},{st['cr']},{short}"
+
+
+def _cleanup(session):
+    """Drop a finished session's token cache (best-effort)."""
+    if not session:
+        return
+    try:
+        os.unlink(_cache_path(session))
+    except OSError:
+        pass
+
+
+def main():
+    event = sys.argv[1] if len(sys.argv) > 1 else "idle"
     try:
         raw = sys.stdin.read()
         data = json.loads(raw) if raw.strip() else {}
     except (ValueError, OSError):
         data = {}
-    transcript = data.get("transcript_path") or ""
-    session = data.get("session_id") or ""
-    if not transcript or not os.path.isfile(transcript):
-        return None
-    try:
-        st = _accumulate(transcript, session)
-    except OSError:
-        return None
-    # Nothing logged yet (e.g. SessionStart before the first turn) → no payload,
-    # so the widget shows a clean state line instead of "? · 0 in / 0 out".
-    if not st["model"] and (st["in"] + st["out"] + st["cc"]) == 0:
-        return None
-    model = (st["model"] or "").replace("claude-", "") or "?"
-    short = session.split("-")[0] if session else ""
-    return f"{model},{st['in']},{st['out']},{st['cc']},{st['cr']},{short}"
-
-
-def main():
-    event = sys.argv[1] if len(sys.argv) > 1 else "idle"
-    payload = _payload()
+    payload = _payload(data, event)
     argv = ["noctalia", "msg", "plugin", PLUGIN, TARGET, event]
     if payload:
         argv.append(payload)
     if os.environ.get("NOCTALIA_PULSE_DRYRUN"):
         print(" ".join(argv))
-        return
-    try:
-        subprocess.run(argv, capture_output=True, timeout=3)
-    except Exception:  # noqa: BLE001 — noctalia offline/missing must stay silent
-        pass
+    else:
+        try:
+            subprocess.run(argv, capture_output=True, timeout=3)
+        except Exception:  # noqa: BLE001 — noctalia offline/missing must stay silent
+            pass
+    if event == "session_end":
+        _cleanup(data.get("session_id") or "")
 
 
 if __name__ == "__main__":

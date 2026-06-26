@@ -13,9 +13,10 @@ barWidget = {
   setTooltip = function(t) __tt = t end,
 }
 
--- watch() is invoked at load with ("cc.state", callback); the headless test
--- drives state through onIpc instead, so the registration is a no-op here.
-noctalia = { state = { watch = function(_key, _cb) end } }
+-- watch() is invoked at load with ("cc.state", callback); capture the callback
+-- so the spec can drive the quick-ask path the same way noctalia.state.set would.
+__watch_cb = nil
+noctalia = { state = { watch = function(_key, cb) __watch_cb = cb end } }
 
 -- tiny assertion harness (full report, then non-zero exit via error()).
 local failures = 0
@@ -23,6 +24,22 @@ function expect(label, got, want)
   if got ~= want then
     failures = failures + 1
     print(string.format("FAIL %s\n  got : %q\n  want: %q", label, tostring(got), tostring(want)))
+  else
+    print("ok   " .. label)
+  end
+end
+function contains(label, haystack, needle)
+  if type(haystack) == "string" and string.find(haystack, needle, 1, true) then
+    print("ok   " .. label)
+  else
+    failures = failures + 1
+    print(string.format("FAIL %s\n  %q\n  has no: %q", label, tostring(haystack), tostring(needle)))
+  end
+end
+function absent(label, haystack, needle)
+  if type(haystack) == "string" and string.find(haystack, needle, 1, true) then
+    failures = failures + 1
+    print(string.format("FAIL %s\n  %q\n  unexpectedly has: %q", label, tostring(haystack), tostring(needle)))
   else
     print("ok   " .. label)
   end

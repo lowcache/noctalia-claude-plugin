@@ -72,7 +72,9 @@ local function parse(line)
   return nil
 end
 
--- publish agent state for the pulse widget (cross-VM channel via shared state).
+-- publish quick-ask state for the pulse widget (cross-VM channel via shared
+-- state). Only the hookless `/cc ? <q>` stream uses this; the widget tracks it as
+-- one ephemeral "ask" session and drops it when the ask ends.
 local function set_state(s) noctalia.state.set("cc.state", s) end
 
 -- ── context injection ────────────────────────────────────────────────────────
@@ -134,14 +136,16 @@ function onQuery(query)
 end
 
 function onActivate(id)
+  -- A launched TUI session drives the pulse itself via the global Claude Code
+  -- hooks (with its own session id + token telemetry), so we DON'T set cc.state
+  -- here — doing so would register a phantom session the hooks never update or
+  -- retire. cc.state is only for the hookless quick-ask stream below.
   if id == "continue" then
-    set_state(EVENT.turn_start)
     noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " --continue")
     return
   end
   local task = id:match("^task:(.*)$")
   if task then
-    set_state(EVENT.turn_start)
     noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " " .. shq(task))
     return
   end
