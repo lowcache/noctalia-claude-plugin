@@ -15,6 +15,11 @@ local function shq(s)
   return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
 end
 
+-- A double-quoted sh argument: unlike shq it lets the shell expand $VAR (we need
+-- $HOME in the shim path so nothing user-specific is hardcoded). ONLY use this on
+-- fixed, trusted strings — never on user input, which must go through shq().
+local function dq(s) return '"' .. tostring(s):gsub('"', '\\"') .. '"' end
+
 -- ── backend seam: normalize at the boundary ──────────────────────────────────
 -- Everything downstream consumes this vocabulary, never raw backend output.
 local EVENT = {
@@ -70,6 +75,35 @@ end
 -- publish agent state for the pulse widget (cross-VM channel via shared state).
 local function set_state(s) noctalia.state.set("cc.state", s) end
 
+-- ── context injection ────────────────────────────────────────────────────────
+-- Make /cc-launched sessions desktop-AWARE (senses) and desktop-CAPABLE (hands)
+-- by wiring the noctalia MCP shim and a role note into the launch.
+--
+-- We pass the shim via inline --mcp-config (not a file) so the terminal's cwd is
+-- irrelevant: /cc opens in the user's project dir, not the plugin dir. We push a
+-- role note, NOT a senses snapshot — a snapshot taken at launch is stale before
+-- the first turn; instead Claude pulls fresh senses on demand via the tools.
+-- [CEILING]: shim assumed at the canonical install path
+-- ($HOME/.local/share/noctalia/plugins/<id>); if noctalia exposes a plugin-dir to
+-- luau, derive the path from that instead. $HOME stays bare for the shell to
+-- expand (portable; nothing user-specific is committed). The JSON is fixed and
+-- trusted (no user input), so dq() is injection-safe here.
+local SHIM = "$HOME/.local/share/noctalia/plugins/claude/shim/noctalia-mcp.py"
+local MCP_JSON = '{"mcpServers":{"noctalia":{"command":"python3","args":["' .. SHIM .. '"]}}}'
+
+local SYSTEM_NOTE = table.concat({
+  "You are running inside the Noctalia desktop shell (niri/Wayland), launched from its Claude Code companion plugin.",
+  "An MCP server named 'noctalia' gives you live desktop senses and hands:",
+  "PERCEIVE — get_window (focused app/title), get_workspace (focused output + workspace), get_media (now playing), get_shell_state (shell status).",
+  "ACT — notify (desktop toast), set_theme_mode (dark/light/auto), set_color_scheme.",
+  "MEMORY — remember (persist a durable fact for future sessions).",
+  "Call the perceive tools when current desktop context matters instead of assuming it, and use notify for ambient status updates.",
+}, " ")
+
+-- Flags shared by every interactive launch (task + continue). Built once.
+local CONTEXT_FLAGS =
+  "--mcp-config " .. dq(MCP_JSON) .. " --append-system-prompt " .. shq(SYSTEM_NOTE)
+
 -- ── /cc routing ──────────────────────────────────────────────────────────────
 local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
@@ -102,15 +136,13 @@ end
 function onActivate(id)
   if id == "continue" then
     set_state(EVENT.turn_start)
-    noctalia.runInTerminal("claude --continue")
+    noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " --continue")
     return
   end
   local task = id:match("^task:(.*)$")
   if task then
     set_state(EVENT.turn_start)
-    -- [CEILING]: env-context injection goes here via --append-system-prompt once the
-    -- MCP shim can gather senses. Upgrade = prepend shim-gathered context.
-    noctalia.runInTerminal("claude " .. shq(task))
+    noctalia.runInTerminal("claude " .. CONTEXT_FLAGS .. " " .. shq(task))
     return
   end
   local ask = id:match("^ask:(.*)$")
