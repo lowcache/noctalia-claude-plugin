@@ -66,13 +66,25 @@ def _remember(a):
         #  2) Atomic publish — write a temp file OUTSIDE the inbox, then
         #     os.replace() it in. A sweep either sees the whole note or not at
         #     all; it can never read a half-written file mid-write.
+        #  3) Crash durability — fsync the file before publish, then fsync the
+        #     inbox dir after the rename. Without both, a power loss/panic can
+        #     leave a flushed file whose directory entry never landed (lost
+        #     note) or a renamed entry pointing at unflushed data. Cheap
+        #     insurance; matters for an alpha shell on a crash-prone desktop.
         ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
         final = os.path.join(inbox, f"{ts}-{slug}-{os.getpid()}.md")
         fd, tmp = tempfile.mkstemp(dir=mem, prefix=".remember-", suffix=".tmp")
         try:
             with os.fdopen(fd, "w") as f:
                 f.write(body)
+                f.flush()
+                os.fsync(f.fileno())
             os.replace(tmp, final)
+            dfd = os.open(inbox, os.O_RDONLY)
+            try:
+                os.fsync(dfd)
+            finally:
+                os.close(dfd)
         except BaseException:
             try:
                 os.unlink(tmp)
