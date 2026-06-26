@@ -8,9 +8,7 @@ status: active
 # System State
 
 ## v1 Status (2026-06-26)
-Live and verified end-to-end. Perceive + Act + Pulse architecture functional. Context injection in `/cc` implemented and verified. Shim expanded to 15 tools. Git history cleaned into 7 atomic commits. Two commits ready to push to GitHub; plugin requires reload in noctalia to expose new tools.
-
-**CRITICAL FINDING (concurrent session):** Plugin's `remember` tool uses µs-timestamp + pid + atomic write (os.replace). Concurrent memd session discovered memd's own `write_inbox_note()` — which writes to the SAME shared `~/.memory/inbox/` — is weaker/non-atomic. Shared inbox path is only as safe as its weakest writer. Plugin hardening is incomplete until memd is hardened to match.
+Live and verified end-to-end. Perceive + Act + Pulse architecture functional. Context injection in `/cc` implemented and verified. Shim expanded to 15 tools. Three commits pending push to GitHub: one fsync durability hardening, two memd distills. Plugin requires reload in noctalia to expose updated tools.
 
 ## What This Project Is
 noctalia-claude-plugin — Claude Code companion plugin for Noctalia v5 desktop shell (niri / Wayland). Own repo, pushed to github.com/lowcache/noctalia-claude-plugin. Symlinked live at `~/.local/share/noctalia/plugins/claude`. MCP shim registered in `~/.nix-config/.mcp.json` (stdio: `python3 shim/noctalia-mcp.py`).
@@ -38,7 +36,7 @@ Handshake verified. 15 tools total:
 - **Actuate:** `notify`, `set_theme_mode`, `set_color_scheme`, `focus_window`, `switch_workspace`, `move_to_workspace`, `set_wallpaper`
 - **Memory:** `remember` (write to global memd inbox)
 
-Robustness: validated with adversarial input. `remember` hardened with µs-timestamp + pid + atomic write (os.replace temp → inbox).
+Robustness: validated with adversarial input. **remember tool hardening:** µs-timestamp + pid filename scheme (collision-proof across concurrent shim instances); atomic publish via temp write + `os.replace()`; fsync before replace (file durability) and fsync on directory after replace (rename durability) to guard against power-loss/panic. Inbox safety verified equivalent with memd's `os.link` writer; collision structurally impossible by PID uniqueness, both handle concurrency safely.
 
 ## Context Injection in `/cc` (2026-06-26)
 cc.luau passes `--mcp-config` (inline JSON pointing at shim) + `--append-system-prompt` (role note listing tools) to every `task` and `continue` launch. Verified end-to-end headless.
@@ -53,8 +51,9 @@ All resilient to noctalia being offline.
 - **Claude Code hooks:** ~/.claude/settings.json
 
 ## Current Working Tree (2026-06-26)
-Clean. Commits ready to push to origin/main:
-- `0f0a2b7` fix(shim): make remember concurrency-safe (unique names + atomic write)
-- `ce30ec7` feat(shim): add desktop senses (power/network/processes) and hands (focus/workspace/wallpaper)
+Three commits pending push to origin/main:
+- `c5d03ac` fix(shim): fsync remember note + inbox dir for crash durability
+- `c900f6e` Update project memory (sweep distill)
+- `e097c40` Update project memory (sweep distill)
 
-**Action:** `git push origin main` (no force needed; extends history).
+**Status:** User pushing manually via SSH (unavailable in sandbox). After push, reload plugin in noctalia for new code to take effect.
