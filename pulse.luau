@@ -14,14 +14,18 @@
 -- "presence orb" variant — a [[desktop_widget]] with setNeedsFrameTick/onFrameTick.
 -- This bar dot is v1; the orb is v1.1. Upgrade = add an orb entry, same state map.
 
+-- Colors use only the global scheme's accents so the dot matches the other bar
+-- widgets: `secondary` (the green accent) for the ambient/working states (idle,
+-- tool), `primary` (orange) for the Claude-active states (thinking/responding/
+-- done), and `error` (red) reserved for the attention bell + hard errors.
 local VISUAL = {
-  idle            = { glyph = "robot",          color = "on_surface_variant", tip = "Claude: idle" },
-  turn_start      = { glyph = "brain",          color = "primary",  tip = "Claude: thinking" },
-  text            = { glyph = "message-dots",   color = "primary",  tip = "Claude: responding" },
-  tool_start      = { glyph = "tool",           color = "tertiary", tip = "Claude: running a tool" },
-  needs_attention = { glyph = "bell-ringing",   color = "error",    tip = "Claude needs you" },
-  turn_end        = { glyph = "bell",           color = "primary",  tip = "Claude: done — ready for you" },
-  error           = { glyph = "alert-triangle", color = "error",    tip = "Claude: error" },
+  idle            = { glyph = "robot",          color = "secondary", tip = "Claude: idle" },
+  turn_start      = { glyph = "brain",          color = "primary",   tip = "Claude: thinking" },
+  text            = { glyph = "message-dots",   color = "primary",   tip = "Claude: responding" },
+  tool_start      = { glyph = "tool",           color = "secondary", tip = "Claude: running a tool" },
+  needs_attention = { glyph = "bell-ringing",   color = "error",     tip = "Claude needs you" },
+  turn_end        = { glyph = "bell",           color = "primary",   tip = "Claude: done — ready for you" },
+  error           = { glyph = "alert-triangle", color = "error",     tip = "Claude: error" },
 }
 
 -- With several sessions in different states, the bar shows the most urgent one:
