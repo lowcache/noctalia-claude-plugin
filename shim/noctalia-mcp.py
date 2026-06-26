@@ -43,10 +43,12 @@ def _remember(a):
     The membrane (decision #25): ephemeral senses -> noctalia.state; durable
     learnings -> global memd. This is the durable side. Notes are routed:global
     so memd's curator files them into the system-wide store, not a project."""
-    text = (a.get("text") or "").strip()
+    # Coerce: a model may send a non-string (number/list) — str() keeps the
+    # handler (and the server) from raising on .strip()/.lower().
+    text = str(a.get("text") or "").strip()
     if not text:
         return "error: 'text' is required"
-    slug = re.sub(r"[^a-z0-9]+", "-", (a.get("topic") or "note").lower()).strip("-") or "note"
+    slug = re.sub(r"[^a-z0-9]+", "-", str(a.get("topic") or "note").lower()).strip("-") or "note"
     inbox = os.path.expanduser("~/.memory/inbox")
     try:
         os.makedirs(inbox, exist_ok=True)
@@ -129,18 +131,23 @@ TOOLS = {
 
 
 def _tool_list():
-    return [
-        {
+    tools = []
+    for name, (desc, props, _fn) in TOOLS.items():
+        # `required` is a control flag in our table, not a JSON Schema property
+        # keyword — lift it to the object-level `required` array and strip it
+        # from each property def so strict MCP validators accept the schema.
+        clean = {k: {pk: pv for pk, pv in spec.items() if pk != "required"}
+                 for k, spec in props.items()}
+        tools.append({
             "name": name,
             "description": desc,
             "inputSchema": {
                 "type": "object",
-                "properties": props,
+                "properties": clean,
                 "required": [k for k, v in props.items() if v.get("required")],
             },
-        }
-        for name, (desc, props, _fn) in TOOLS.items()
-    ]
+        })
+    return tools
 
 
 def _dispatch(method, params):
@@ -159,10 +166,18 @@ def _dispatch(method, params):
         entry = TOOLS.get(name)
         if not entry:
             return None, {"code": -32602, "message": f"unknown tool: {name}"}
-        text = entry[2](args)
+        try:
+            text = entry[2](args if isinstance(args, dict) else {})
+        except Exception as e:  # noqa: BLE001 — a tool bug must not crash the server
+            return None, {"code": -32603, "message": f"tool '{name}' failed: {e}"}
         is_error = isinstance(text, str) and text.startswith("error:")
-        return {"content": [{"type": "text", "text": text}], "isError": is_error}, None
+        return {"content": [{"type": "text", "text": str(text)}], "isError": is_error}, None
     return None, {"code": -32601, "message": f"method not found: {method}"}
+
+
+def _emit(out, payload):
+    out.write(json.dumps(payload) + "\n")
+    out.flush()
 
 
 def main():
@@ -174,20 +189,28 @@ def main():
         try:
             req = json.loads(line)
         except json.JSONDecodeError:
+            _emit(out, {"jsonrpc": "2.0", "id": None,
+                        "error": {"code": -32700, "message": "parse error"}})
+            continue
+        if not isinstance(req, dict):
+            _emit(out, {"jsonrpc": "2.0", "id": None,
+                        "error": {"code": -32600, "message": "invalid request"}})
             continue
         mid = req.get("id")
         method = req.get("method", "")
         # Notifications (no id) — e.g. notifications/initialized: ack by ignoring.
         if mid is None:
             continue
-        result, error = _dispatch(method, req.get("params") or {})
+        try:
+            result, error = _dispatch(method, req.get("params") or {})
+        except Exception as e:  # noqa: BLE001 — never let a handler kill the loop
+            result, error = None, {"code": -32603, "message": f"internal error: {e}"}
         resp = {"jsonrpc": "2.0", "id": mid}
         if error is not None:
             resp["error"] = error
         else:
             resp["result"] = result
-        out.write(json.dumps(resp) + "\n")
-        out.flush()
+        _emit(out, resp)
 
 
 if __name__ == "__main__":
