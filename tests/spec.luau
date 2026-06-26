@@ -1,39 +1,64 @@
--- Spec — drives pulse.luau through its public surface (the global onIpc + the
--- barWidget stub). Concatenated AFTER pulse.luau, so onIpc and the recorded
--- __tt/__glyph are in scope. Token figures below are the tether-cross-checked
--- totals from a real opus-4-8 transcript (in 45129, out 112432, cc 202412,
--- cr 4589306) → displayed input = 45129 + 202412 = 247541.
+-- Spec — drives pulse.luau through its public surface: the global onIpc (hook
+-- reflex, per-session, with the CSV payload) and the captured cc.state callback
+-- (__watch_cb, the quick-ask path). Concatenated AFTER pulse.luau, so onIpc,
+-- __watch_cb, and the recorded __tt/__glyph are in scope. opus token figures are
+-- the tether-cross-checked totals (in 45129, cc 202412 → 247541 displayed).
 
--- Loading pulse.luau already ran apply("idle").
+-- Load ran render() with no sessions → clean idle.
 expect("load → idle tooltip", __tt, "Claude: idle")
 expect("load → robot glyph", __glyph, "robot")
 
--- Full telemetry payload: input = fresh + cache-create; cache reads shown apart.
-onIpc("turn_end", "opus-4-8,45129,112432,202412,4589306,verify")
-expect("turn_end → burn tooltip", __tt,
+-- One session, full telemetry → single-session burn tooltip + bell.
+onIpc("turn_end", "opus-4-8,45129,112432,202412,4589306,alpha")
+expect("1 session → burn tooltip", __tt,
   "Claude: done — ready for you\nopus-4-8 · 247.5k in / 112.4k out · 4.6M cached")
-expect("turn_end → bell glyph", __glyph, "bell")
+expect("1 session → bell glyph", __glyph, "bell")
 
--- Payload-less event retains the last telemetry (high-frequency reflex events).
-onIpc("tool_start")
-expect("tool_start → retains burn", __tt,
-  "Claude: running a tool\nopus-4-8 · 247.5k in / 112.4k out · 4.6M cached")
+-- Same session updates in place (same sid) → still one session, new numbers.
+onIpc("tool_start", "opus-4-8,50000,120000,200000,5000000,alpha")
+expect("same sid updates in place", __tt,
+  "Claude: running a tool\nopus-4-8 · 250.0k in / 120.0k out · 5.0M cached")
+expect("same sid → tool glyph", __glyph, "tool")
 
--- Small counts, no cache reads → the "cached" segment is omitted, plain ints.
-onIpc("turn_start", "haiku-4-5,1200,340,0,0,abc")
-expect("turn_start → no-cache format", __tt, "Claude: thinking\nhaiku-4-5 · 1.2k in / 340 out")
+-- A second session appears → aggregate view; glyph = most urgent (tool > thinking).
+onIpc("turn_start", "haiku-4-5,1200,340,0,0,beta")
+expect("2 sessions → tool glyph (priority)", __glyph, "tool")
+expect("2 sessions → aggregate tooltip", __tt,
+  "Claude — 2 sessions\n" ..
+  "beta · thinking · haiku-4-5 1.2k/340\n" ..
+  "alpha · tool · opus-4-8 250.0k/120.0k\n" ..
+  "Σ 251.2k in / 120.3k out")
 
--- idle must clear telemetry: the bar widget outlives a session, so a NEW
--- session's idle must never show the previous session's burn.
-onIpc("idle")
-expect("idle → clears burn", __tt, "Claude: idle")
+-- Urgency wins: beta needs you → bell-ringing regardless of recency/order.
+onIpc("needs_attention", "haiku-4-5,1200,340,0,0,beta")
+expect("needs_attention → bell-ringing glyph", __glyph, "bell-ringing")
+contains("needs_attention tooltip lists beta", __tt, "beta · needs you · haiku-4-5 1.2k/340")
 
--- Empty-string payload is treated as absent (no trailing burn line).
-onIpc("error", "")
-expect("error → empty payload", __tt, "Claude: error")
+-- Quick-ask (cc.state path) joins as an ephemeral, telemetry-less session.
+__watch_cb("turn_start")
+contains("ask adds a session", __tt, "Claude — 3 sessions")
+contains("ask shown without burn", __tt, "ask · thinking")
+expect("ask doesn't lower urgency", __glyph, "bell-ringing")
 
--- Unknown state falls back to idle visuals.
-onIpc("bogus")
-expect("unknown state → idle fallback glyph", __glyph, "robot")
+-- Ask completes → dropped (answer goes out via notify), back to two sessions.
+__watch_cb("turn_end")
+contains("ask removed → 2 sessions", __tt, "Claude — 2 sessions")
+absent("ask gone from tooltip", __tt, "ask ·")
+
+-- SessionEnd retires a session.
+onIpc("session_end", "opus-4-8,0,0,0,0,alpha")
+expect("session_end → 1 session, beta single view", __tt,
+  "Claude needs you\nhaiku-4-5 · 1.2k in / 340 out")
+expect("session_end keeps beta urgency", __glyph, "bell-ringing")
+
+-- Last session ends → clean idle again.
+onIpc("session_end", "haiku-4-5,0,0,0,0,beta")
+expect("all ended → idle tooltip", __tt, "Claude: idle")
+expect("all ended → robot glyph", __glyph, "robot")
+
+-- A session with no real telemetry yet (SessionStart before first turn) shows
+-- just its state, no "? 0/0" noise.
+onIpc("idle", "?,0,0,0,0,gamma")
+expect("zero-telemetry session → clean state", __tt, "Claude: idle")
 
 done()
