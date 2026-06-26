@@ -104,8 +104,8 @@ local MCP_JSON = '{"mcpServers":{"noctalia":{"command":"python3","args":["' .. S
 local SYSTEM_NOTE = table.concat({
   "You are running inside the Noctalia desktop shell (niri/Wayland), launched from its Claude Code companion plugin.",
   "An MCP server named 'noctalia' gives you live desktop senses and hands:",
-  "PERCEIVE — get_window (focused app/title), get_workspace (focused output + workspace), get_media (now playing), get_shell_state (shell status).",
-  "ACT — notify (desktop toast), set_theme_mode (dark/light/auto), set_color_scheme.",
+  "PERCEIVE — get_window (focused app/title), get_workspace (focused output + workspace), get_media (now playing), get_shell_state (shell status), get_power (battery/AC), get_network (connectivity/Wi-Fi), get_processes (top by CPU).",
+  "ACT — notify (desktop toast), set_theme_mode (dark/light/auto), set_color_scheme, focus_window (by niri id), switch_workspace (by index/name), move_to_workspace (move focused column), set_wallpaper (path or random).",
   "MEMORY — remember (persist a durable fact for future sessions).",
   "Call the perceive tools when current desktop context matters instead of assuming it, and use notify for ambient status updates.",
 }, " ")
