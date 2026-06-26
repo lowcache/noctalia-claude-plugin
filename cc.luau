@@ -44,14 +44,22 @@ local function parse(line)
     return { kind = EVENT.turn_start }
   elseif t == "assistant" then
     local content = type(msg.message) == "table" and msg.message.content or msg.content
+    local text = ""
     if type(content) == "table" then
       for _, block in ipairs(content) do
-        if type(block) == "table" and block.type == "tool_use" then
-          return { kind = EVENT.tool_start }
+        if type(block) == "table" then
+          if block.type == "tool_use" then
+            return { kind = EVENT.tool_start }
+          elseif block.type == "text" and type(block.text) == "string" then
+            text = text .. block.text
+          end
         end
       end
     end
-    return { kind = EVENT.text }
+    return { kind = EVENT.text, text = text }
+  elseif t == "user" then
+    -- a tool result came back; the model is thinking again (clears tool_start)
+    return { kind = EVENT.turn_start }
   elseif t == "result" then
     local err = msg.is_error == true or msg.subtype == "error_during_execution"
     return { kind = err and EVENT.error or EVENT.turn_end, text = msg.result }
@@ -74,10 +82,16 @@ function onQuery(query)
     return
   end
   local ask = text:match("^%?%s*(.*)$")
-  if ask and ask ~= "" then
-    launcher.setResults(query, {
-      { id = "ask:" .. ask, title = "Ask Claude (one-shot)", subtitle = ask, glyph = "message-dots" },
-    })
+  if ask ~= nil then
+    if ask == "" then
+      launcher.setResults(query, {
+        { id = "_askhint", title = "Ask Claude (one-shot)", subtitle = "Type a question after ?", glyph = "message-dots" },
+      })
+    else
+      launcher.setResults(query, {
+        { id = "ask:" .. ask, title = "Ask Claude (one-shot)", subtitle = ask, glyph = "message-dots" },
+      })
+    end
     return
   end
   launcher.setResults(query, {
@@ -102,18 +116,24 @@ function onActivate(id)
   local ask = id:match("^ask:(.*)$")
   if ask then
     set_state(EVENT.turn_start)
-    local answer = nil
+    -- Accumulate streamed assistant text; the final `result` event also carries
+    -- the full text, so prefer it at turn_end and fall back to the accumulation.
+    local acc = ""
     noctalia.runStream(backend_command(ask), function(line)
       local ev = parse(line)
       if not ev then return end
       set_state(ev.kind)
-      if ev.text and ev.text ~= "" then answer = ev.text end
-      if ev.kind == EVENT.turn_end then
-        noctalia.notify("Claude", answer or "(no output)")
+      if ev.kind == EVENT.text and ev.text and ev.text ~= "" then
+        acc = acc .. ev.text
+      elseif ev.kind == EVENT.turn_end then
+        local final = (ev.text and ev.text ~= "") and ev.text or acc
+        noctalia.notify("Claude", final ~= "" and final or "(no output)")
       elseif ev.kind == EVENT.error then
-        noctalia.notifyError("Claude", answer or "ask failed")
+        local final = (ev.text and ev.text ~= "") and ev.text or acc
+        noctalia.notifyError("Claude", final ~= "" and final or "ask failed")
       end
     end)
     return
   end
+  -- "_askhint" and any other ids: no-op.
 end
