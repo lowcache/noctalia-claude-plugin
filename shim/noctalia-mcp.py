@@ -23,6 +23,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 PROTOCOL_VERSION = "2024-11-05"
 SERVER_INFO = {"name": "noctalia-mcp", "version": "0.1.0"}
@@ -49,18 +50,36 @@ def _remember(a):
     if not text:
         return "error: 'text' is required"
     slug = re.sub(r"[^a-z0-9]+", "-", str(a.get("topic") or "note").lower()).strip("-") or "note"
-    inbox = os.path.expanduser("~/.memory/inbox")
+    mem = os.path.expanduser("~/.memory")
+    inbox = os.path.join(mem, "inbox")
+    body = (
+        f"---\nrouted: global\ntopic: {slug}\n"
+        f"date: {datetime.date.today()}\nsource: noctalia-mcp/remember\n---\n\n"
+        f"{text}\n"
+    )
     try:
         os.makedirs(inbox, exist_ok=True)
-        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        path = os.path.join(inbox, f"{ts}-{slug}.md")
-        with open(path, "w") as f:
-            f.write(
-                f"---\nrouted: global\ntopic: {slug}\n"
-                f"date: {datetime.date.today()}\nsource: noctalia-mcp/remember\n---\n\n"
-                f"{text}\n"
-            )
-        return f"remembered -> {path}"
+        # Concurrency: every Claude session runs its own shim, and the curator
+        # (memd) reads/clears this inbox in parallel. Two guards:
+        #  1) Unique name — microsecond timestamp + PID, so simultaneous notes
+        #     from different sessions never collide (second-resolution did).
+        #  2) Atomic publish — write a temp file OUTSIDE the inbox, then
+        #     os.replace() it in. A sweep either sees the whole note or not at
+        #     all; it can never read a half-written file mid-write.
+        ts = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        final = os.path.join(inbox, f"{ts}-{slug}-{os.getpid()}.md")
+        fd, tmp = tempfile.mkstemp(dir=mem, prefix=".remember-", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(body)
+            os.replace(tmp, final)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return f"remembered -> {final}"
     except OSError as e:
         return f"error: {e}"
 
