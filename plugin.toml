@@ -1,0 +1,31 @@
+# Claude Code Companion — perceive + act + pulse, for Noctalia v5.
+# NOT a chat client: the terminal does the agentic work; this is the shell-side
+# body — senses, hands, and an attention pulse. See README.md for the design.
+
+id = "lowcache/claude"
+name = "Claude Code Companion"
+version = "0.0.1"
+# Prereqs (the [[panel]] kind, ui controls, plugin IPC dispatch, the barWidget/onIpc
+# surface) shipped in the 5.0.0 build running here (flake input rev 623210223c).
+# Bump if a future entry needs an API added after this rev.
+min_noctalia = "5.0.0"
+author = "lowcache"
+license = "MIT"
+icon = "robot"
+description = "Claude Code companion: /cc launch + a telemetry-driven attention pulse."
+tags = ["ai", "claude", "productivity"]
+
+# The attention pulse — the visual centerpiece. Reads agent state from
+# noctalia.state ("cc.state") and from hook signals (onIpc), reflects it in the bar.
+[[widget]]
+id = "pulse"
+entry = "pulse.luau"
+
+# /cc — launch a real Claude Code session in the terminal, or a one-shot ask.
+# The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
+# module system, and this is the only entry that talks to a model.
+[[launcher_provider]]
+id = "cc"
+entry = "cc.luau"
+prefix = "/cc"
+glyph = "robot"

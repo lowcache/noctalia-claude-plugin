@@ -1,0 +1,23 @@
+{
+  "_comment": "Merge into ~/.claude/settings.json. The attention reflex: Claude Code lifecycle hooks dispatch an event into the pulse bar widget via `noctalia msg plugin lowcache/claude:pulse all <event>` (target `all` = every monitor's instance; `focused`/bare connector error when the widget is on multiple bars). The widget's onIpc(event, payload) maps the event to a glyph/color. Verified against noctalia 5.0.0 source. SessionStart resets to idle; the lifecycle drives turn_start -> tool_start -> turn_end. For the MCP shim (senses/hands), wire it separately via mcpServers/--mcp-config once shim/noctalia-mcp.py is in use.",
+  "hooks": {
+    "SessionStart": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all idle" } ] }
+    ],
+    "UserPromptSubmit": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all turn_start" } ] }
+    ],
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all tool_start" } ] }
+    ],
+    "PostToolUse": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all turn_start" } ] }
+    ],
+    "Notification": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all needs_attention" } ] }
+    ],
+    "Stop": [
+      { "matcher": "*", "hooks": [ { "type": "command", "command": "noctalia msg plugin lowcache/claude:pulse all turn_end" } ] }
+    ]
+  }
+}
