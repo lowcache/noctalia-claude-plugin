@@ -30,22 +30,26 @@
 -- Per-state look + motion. `color` is the accent the icon is drawn in; `glyph` is the
 -- Tabler icon (same one the bar dot shows). `period` = seconds per full breath;
 -- `omin`/`omax` = opacity bounds. Faster + deeper = more urgent. `word` labels it.
+-- Slow, glowing breath — NOT a strobe. Periods are multi-second (a human breath is
+-- ~4s), opacity floors stay high so the icon glows down rather than blinking to dark,
+-- and the size swing (below) is gentle. Urgency reads as a *faster, deeper* breath,
+-- but even "needs you" stays a breath, never a flicker.
 local VISUAL = {
-  idle            = { glyph = "robot",          color = "secondary", period = 5.0, omin = 0.42, omax = 0.78, word = "idle" },
-  turn_start      = { glyph = "brain",          color = "primary",   period = 2.4, omin = 0.55, omax = 1.00, word = "thinking" },
-  text            = { glyph = "message-dots",   color = "primary",   period = 1.9, omin = 0.60, omax = 1.00, word = "responding" },
-  tool_start      = { glyph = "tool",           color = "secondary", period = 2.2, omin = 0.55, omax = 1.00, word = "running a tool" },
-  needs_attention = { glyph = "bell-ringing",   color = "error",     period = 0.85, omin = 0.38, omax = 1.00, word = "needs you" },
-  turn_end        = { glyph = "bell",           color = "primary",   period = 3.2, omin = 0.55, omax = 0.95, word = "done — ready for you" },
-  error           = { glyph = "alert-triangle", color = "error",     period = 1.1, omin = 0.38, omax = 1.00, word = "error" },
+  idle            = { glyph = "robot",          color = "secondary", period = 11.0, omin = 0.45, omax = 0.80, word = "idle" },
+  turn_start      = { glyph = "brain",          color = "primary",   period = 7.5,  omin = 0.55, omax = 1.00, word = "thinking" },
+  text            = { glyph = "message-dots",   color = "primary",   period = 7.0,  omin = 0.58, omax = 1.00, word = "responding" },
+  tool_start      = { glyph = "tool",           color = "secondary", period = 7.5,  omin = 0.55, omax = 1.00, word = "running a tool" },
+  needs_attention = { glyph = "bell-ringing",   color = "error",     period = 4.5,  omin = 0.55, omax = 1.00, word = "needs you" },
+  turn_end        = { glyph = "bell",           color = "primary",   period = 8.0,  omin = 0.55, omax = 0.95, word = "done — ready for you" },
+  error           = { glyph = "alert-triangle", color = "error",     period = 5.0,  omin = 0.55, omax = 1.00, word = "error" },
 }
 
--- The orb IS the bar icon, magnifying in and out — a desktop "bat signal". The
--- glyph size pulses between MIN and MAX with the breath; a fixed BOX reserves space
--- so the magnification never nudges the label below it.
-local GLYPH_MIN = 48
-local GLYPH_MAX = 82
-local GLYPH_BOX = 88
+-- The orb IS the bar icon, swelling gently in and out — a desktop "bat signal". The
+-- glyph size eases between MIN and MAX with the breath (a soft swell, not a zoom); a
+-- fixed BOX reserves space so the swell never nudges the label below it.
+local GLYPH_MIN = 70
+local GLYPH_MAX = 75
+local GLYPH_BOX = 84
 
 -- Live status mirrored from the bar pulse. `count` 0 means no active sessions.
 local cur = { state = "idle", count = 0, model = "?", tin = 0, tout = 0 }
@@ -100,11 +104,14 @@ local function render()
   }))
 end
 
--- Per-frame breath. `dt` is seconds since the last frame; accumulate into `phase`
--- and wrap at the current state's period so the accumulator can't grow unbounded.
+-- Per-frame breath. `dt` is MILLISECONDS since the last frame (≈16.7 at 60 Hz, ≈6.9
+-- at 144 Hz — verified empirically; the host passes real elapsed ms, so dividing by
+-- 1000 makes `period` a true wall-clock second count, identical on every monitor).
+-- Accumulate into `phase` and wrap at the current state's period so it can't grow
+-- unbounded.
 function onFrameTick(dt)
   local v = VISUAL[cur.state] or VISUAL.idle
-  phase = (phase + (tonumber(dt) or 0)) % v.period
+  phase = (phase + (tonumber(dt) or 0) / 1000) % v.period
   render()
 end
 
