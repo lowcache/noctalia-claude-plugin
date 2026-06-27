@@ -21,6 +21,13 @@ tags = ["ai", "claude", "productivity"]
 id = "pulse"
 entry = "pulse.luau"
 
+# The presence orb — the ambient desktop half of the pulse. A softly breathing disc
+# that mirrors the bar dot's rollup (published to noctalia.state "cc.pulse"); pure
+# view, no hooks of its own. Per-frame motion via setNeedsFrameTick/onFrameTick.
+[[desktop_widget]]
+id = "orb"
+entry = "orb.luau"
+
 # /cc — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
 # module system, and this is the only entry that talks to a model.

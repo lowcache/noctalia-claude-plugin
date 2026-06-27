@@ -1,5 +1,5 @@
 {
-  description = "luau dev/test toolchain for the noctalia-claude plugin widgets (pulse.luau et al.)";
+  description = "luau dev/test toolchain for the noctalia-claude plugin widgets (pulse.luau, orb.luau)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -12,27 +12,58 @@
       ];
       forAll = f: nixpkgs.lib.genAttrs systems (s: f nixpkgs.legacyPackages.${s});
 
-      # Headless test runner: concatenates the API stub prelude, the real widget
+      # Headless spec runner: concatenates an API-stub prelude, the real widget
       # source, and the spec into one luau chunk and runs it. Operates on the
       # working tree at $1 (default $PWD) rather than a sealed flake copy, so it
       # tests the actual files you are editing — and sidesteps the fact that a
       # flake living under nix/ cannot reference ../pulse.luau for a pure check.
+      # `files` is the ordered concat list (prelude, widget, spec).
       mkRunner =
-        pkgs:
+        pkgs: name: files:
         pkgs.writeShellApplication {
-          name = "pulse-test";
+          inherit name;
           runtimeInputs = [ pkgs.luau ];
           text = ''
             root="''${1:-$PWD}"
-            for f in tests/prelude.luau pulse.luau tests/spec.luau; do
+            files=(${nixpkgs.lib.concatStringsSep " " files})
+            for f in "''${files[@]}"; do
               if [ ! -f "$root/$f" ]; then
-                echo "pulse-test: missing $root/$f (run from the repo root, or pass it as \$1)" >&2
+                echo "${name}: missing $root/$f (run from the repo root, or pass it as \$1)" >&2
                 exit 2
               fi
             done
             tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
-            cat "$root/tests/prelude.luau" "$root/pulse.luau" "$root/tests/spec.luau" > "$tmp"
+            : > "$tmp"
+            for f in "''${files[@]}"; do cat "$root/$f" >> "$tmp"; done
             luau "$tmp"
+          '';
+        };
+
+      pulseRunner =
+        pkgs:
+        mkRunner pkgs "pulse-test" [
+          "tests/prelude.luau"
+          "pulse.luau"
+          "tests/spec.luau"
+        ];
+      orbRunner =
+        pkgs:
+        mkRunner pkgs "orb-test" [
+          "tests/orb_prelude.luau"
+          "orb.luau"
+          "tests/orb_spec.luau"
+        ];
+
+      # Runs every widget suite in turn; the program every entrypoint resolves to.
+      allRunner =
+        pkgs:
+        pkgs.writeShellApplication {
+          name = "widget-test";
+          runtimeInputs = [ pkgs.luau ];
+          text = ''
+            root="''${1:-$PWD}"
+            echo "── pulse ──"; "${pulseRunner pkgs}/bin/pulse-test" "$root"
+            echo "── orb ──";   "${orbRunner pkgs}/bin/orb-test" "$root"
           '';
         };
     in
@@ -41,34 +72,49 @@
         default = pkgs.mkShell {
           packages = [
             pkgs.luau
-            (mkRunner pkgs)
+            (pulseRunner pkgs)
+            (orbRunner pkgs)
+            (allRunner pkgs)
           ];
           shellHook = ''
-            echo "luau toolchain ready. Run the widget specs:  pulse-test   (from the repo root)"
+            echo "luau toolchain ready. Run the widget specs:  widget-test   (all)"
+            echo "                                              pulse-test    (bar dot only)"
+            echo "                                              orb-test      (presence orb only)"
           '';
         };
       });
 
-      # `nix run ./nix#test` from the repo root runs the widget specs.
+      # `nix run ./nix#test` (or bare `nix run ./nix`) runs every widget suite.
+      # `nix run ./nix#pulse` / `#orb` run a single suite.
       apps = forAll (
         pkgs:
         let
-          runner = mkRunner pkgs;
+          all = allRunner pkgs;
         in
         {
           default = {
             type = "app";
-            program = "${runner}/bin/pulse-test";
+            program = "${all}/bin/widget-test";
           };
           test = {
             type = "app";
-            program = "${runner}/bin/pulse-test";
+            program = "${all}/bin/widget-test";
+          };
+          pulse = {
+            type = "app";
+            program = "${pulseRunner pkgs}/bin/pulse-test";
+          };
+          orb = {
+            type = "app";
+            program = "${orbRunner pkgs}/bin/orb-test";
           };
         }
       );
 
       packages = forAll (pkgs: {
-        pulse-test = mkRunner pkgs;
+        pulse-test = pulseRunner pkgs;
+        orb-test = orbRunner pkgs;
+        widget-test = allRunner pkgs;
       });
     };
 }

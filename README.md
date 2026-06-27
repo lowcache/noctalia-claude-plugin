@@ -13,8 +13,8 @@ rev `623210223c`). Every entry below was rewritten against the **verified** API
 read from that source — the earlier `[CEILING]:` guesses (`widget.*`, one-arg
 `onIpc`, `noctalia msg pulse`, `theme-set`, Lua `%q` quoting) are corrected. The
 MCP shim's JSON-RPC loop is implemented and passes a local handshake. Remaining
-`[CEILING]:` markers are genuine deferrals (the orb variant, ollama backend,
-stream-json schema drift), not unknowns. **Next: live-install + a bar dispatch test.**
+`[CEILING]:` markers are genuine deferrals (ollama backend, stream-json schema
+drift), not unknowns. **Next: live-install + a bar dispatch test.**
 
 ## v1 shape (the three nerves)
 
@@ -28,7 +28,10 @@ stream-json schema drift), not unknowns. **Next: live-install + a bar dispatch t
   backend chokepoint (`invoke`/`parse`, normalized event vocabulary). claude-only,
   seam open for ollama/router later.
 - `pulse.luau` — bar widget; discrete state-language (idle/thinking/tool/needs-you/
-  done). Smooth breathing/halo = the desktop "presence orb" variant, **v1.1**.
+  done). Mirrors its session rollup to `noctalia.state` (`cc.pulse`) for the orb.
+- `orb.luau` — the desktop "presence orb": a `[[desktop_widget]]` that subscribes to
+  `cc.pulse` and *breathes* the same state via `setNeedsFrameTick`/`onFrameTick`
+  (sine-driven opacity + glyph scale, tempo keyed to urgency). Pure view, no hooks.
 - `shim/noctalia-mcp.py` — stdio MCP shim (prototype; port to Rust for release).
 - `hooks/settings.snippet.json` — merge into `~/.claude/settings.json`.
 - `config.example.toml` — the backend seam, documented (not yet read).
@@ -47,10 +50,9 @@ a red bell; `... all idle` → back to the robot. (Before install the same comma
 returns `error: no plugin entry matched`, which confirms the dispatch path.)
 
 ## Open items
-- **Live-install + bar dispatch test** (the smoke test above) — the only unverified
-  link; everything else is checked against source / a local handshake.
-- The desktop "presence orb" — smooth breathing via `setNeedsFrameTick`/`onFrameTick`
-  (v1.1; the bar dot is v1).
+- **Live-install + bar/orb dispatch test** (the smoke test above, plus placing the
+  orb desktop widget) — the only unverified link; everything else is checked against
+  source / a local handshake.
 - `--mcp-config` entry so Claude actually calls the shim mid-session; then expand
   the senses/hands tool set.
 - Privacy-tier gate keyed to backend locality (when a local backend lands).
@@ -59,20 +61,22 @@ returns `error: no plugin entry matched`, which confirms the dispatch path.)
 ## Development
 
 `nix/` carries a self-contained luau toolchain for testing the widget logic
-(`pulse.luau`) offline — no noctalia reload needed to catch a regression in the
-state machine or the token-burn tooltip formatting.
+(`pulse.luau`, `orb.luau`) offline — no noctalia reload needed to catch a regression
+in the state machine, the token-burn tooltip formatting, or the orb's breath math.
 
 ```sh
-nix run ./nix#test        # run the widget specs (from the repo root)
-nix develop ./nix         # drop into a shell with `luau` + `pulse-test` on PATH
+nix run ./nix#test        # run every widget suite (from the repo root)
+nix run ./nix#pulse       # bar dot only       nix run ./nix#orb   # presence orb only
+nix develop ./nix         # shell with `luau` + the *-test runners on PATH
 ```
 
-The runner concatenates `tests/prelude.luau` (stubs the `barWidget`/`noctalia`
-API), the real `pulse.luau`, and `tests/spec.luau` into one chunk and runs it
-under `luau`, asserting on what the stubbed `barWidget` records. It exercises the
-widget's true public surface (`onIpc` + `barWidget`), so the specs validate the
-shipping source, not a copy. It tests logic only — the live noctalia integration
-(IPC dispatch, real bar rendering) still needs an install + reload.
+Each runner concatenates a stub prelude (the `barWidget`/`desktopWidget`/`ui`/
+`noctalia` API), the real widget source, and its spec into one chunk and runs it
+under `luau`, asserting on what the stubs record. The pulse suite drives `onIpc` +
+`barWidget`; the orb suite drives the `cc.pulse` watch callback + `onFrameTick` and
+asserts on the rendered `ui` tree (disc color/opacity, glyph, breath bounds). Specs
+validate the shipping source, not a copy — but logic only; the live noctalia
+integration (IPC dispatch, real bar/desktop rendering) still needs an install + reload.
 
 Design rationale captured in nix-config `.memory` (decision:
 claude-code-plugin-v1-design).

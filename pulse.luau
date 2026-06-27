@@ -10,9 +10,10 @@
 -- Bar widgets do DISCRETE state (glyph/color/tooltip), not per-frame animation.
 -- The bar API is the `barWidget.*` table (NOT `widget`). Glyph names are Tabler
 -- icon names; an unknown name renders the skull fallback.
--- [CEILING]: smooth breathing + softness halo (the "wow") needs the desktop
--- "presence orb" variant — a [[desktop_widget]] with setNeedsFrameTick/onFrameTick.
--- This bar dot is v1; the orb is v1.1. Upgrade = add an orb entry, same state map.
+-- The smooth breathing "wow" lives in the companion presence orb (orb.luau, a
+-- [[desktop_widget]] with setNeedsFrameTick/onFrameTick). The orb is a pure view:
+-- this bar dot mirrors its session rollup to noctalia.state ("cc.pulse", at the end
+-- of render below) and the orb subscribes — same state map, two surfaces.
 
 -- Colors use only the global scheme's accents so the dot matches the other bar
 -- widgets: `secondary` (the green accent) for the ambient/working states (idle,
@@ -130,6 +131,24 @@ local function render()
     tip = table.concat(lines, "\n")
   end
   barWidget.setTooltip(tip)
+
+  -- Mirror the rollup to shared state so the presence orb (orb.luau, a separate
+  -- desktop widget) renders the same status without re-deriving it. The bar dot
+  -- stays the single place that aggregates sessions; the orb is a pure subscriber.
+  -- Snapshot carries only what the orb needs: the most-urgent state, the session
+  -- count, and burn totals (single-session figures when count==1, the sum when >1).
+  local snap = { state = best, count = count, model = "?", tin = 0, tout = 0, cr = 0 }
+  if count == 1 and has_burn(arr[1]) then
+    local s = arr[1]
+    snap.model, snap.tin, snap.tout, snap.cr = s.model, s.tin, s.tout, s.cr
+  elseif count > 1 then
+    local Tin, Tout = 0, 0
+    for _, s in ipairs(arr) do
+      if has_burn(s) then Tin = Tin + s.tin; Tout = Tout + s.tout end
+    end
+    snap.tin, snap.tout = Tin, Tout
+  end
+  noctalia.state.set("cc.pulse", snap)
 end
 
 local function touch(sid, state, p)

@@ -15,8 +15,16 @@ barWidget = {
 
 -- watch() is invoked at load with ("cc.state", callback); capture the callback
 -- so the spec can drive the quick-ask path the same way noctalia.state.set would.
+-- set() records the last published snapshot per key (__state) so a spec can assert
+-- on what the bar pulse mirrors to the presence orb ("cc.pulse").
 __watch_cb = nil
-noctalia = { state = { watch = function(_key, cb) __watch_cb = cb end } }
+__state = {}
+noctalia = {
+  state = {
+    watch = function(_key, cb) __watch_cb = cb end,
+    set = function(key, value) __state[key] = value end,
+  },
+}
 
 -- tiny assertion harness (full report, then non-zero exit via error()).
 local failures = 0
