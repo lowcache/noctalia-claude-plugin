@@ -178,11 +178,18 @@ end)
 -- hook reflex path: per-session state + token telemetry, full lifecycle. The
 -- dispatcher always tags the event with a session id; `session_end` (the Claude
 -- Code SessionEnd hook) retires the session so stale entries never accumulate.
+--
+-- A payload-less event carries no session id (real hook events always do) — only a
+-- manual `noctalia msg … :pulse all <event>` poke from the CLI does. Those land in a
+-- single "default" test slot. To keep such a poke from leaving a sticky phantom
+-- session, any RESTING state (idle / turn_end / error) retires "default" too — so
+-- `… all idle` cleanly clears the orb after a manual test, without a plugin reload.
+local MANUAL_REST = { idle = true, turn_end = true, error = true }
 function onIpc(event, payload)
   if type(event) ~= "string" then return end
   local p = parse_payload(payload)
   local sid = (p and p.sid) or "default"
-  if event == "session_end" then
+  if event == "session_end" or (sid == "default" and MANUAL_REST[event]) then
     sessions[sid] = nil
   else
     touch(sid, event, p)

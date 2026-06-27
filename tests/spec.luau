@@ -66,4 +66,34 @@ expect("all ended → green secondary", __color, "secondary")
 onIpc("idle", "?,0,0,0,0,gamma")
 expect("zero-telemetry session → clean state", __tt, "Claude: idle")
 
+-- Retire gamma to exercise the manual/CLI "default" slot in isolation.
+onIpc("session_end", "?,0,0,0,0,gamma")
+
+-- A payload-less event (manual `noctalia msg … :pulse all <event>` poke) lands in the
+-- single "default" slot and is shown, so the orb can be driven from the CLI.
+onIpc("needs_attention", "")
+expect("payload-less poke shows in the default slot", __glyph, "bell-ringing")
+expect("default slot has no burn", __tt, "Claude needs you")
+onIpc("tool_start", "")
+expect("default slot updates in place", __glyph, "tool")
+
+-- It must never become sticky: any resting state (idle/turn_end/error) retires it,
+-- so a manual test can't leave a phantom session lingering until a reload.
+onIpc("idle", "")
+expect("resting idle retires the default slot", __glyph, "robot")
+expect("default cleared → idle tooltip", __tt, "Claude: idle")
+onIpc("needs_attention", "")
+onIpc("turn_end", "")
+expect("resting turn_end also retires default", __tt, "Claude: idle")
+onIpc("needs_attention", "")
+onIpc("error", "")
+expect("resting error also retires default", __glyph, "robot")
+
+-- A real (payload-bearing) session is unaffected by the manual-rest rule: idle/turn_end
+-- keep it; only session_end retires it.
+onIpc("idle", "opus-4-8,10,20,0,0,delta")
+expect("real session idle is kept (not retired)", __tt, "Claude: idle\nopus-4-8 · 10 in / 20 out")
+onIpc("session_end", "opus-4-8,0,0,0,0,delta")
+expect("real session retires only on session_end", __glyph, "robot")
+
 done()
