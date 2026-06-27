@@ -1,7 +1,7 @@
 -- The presence orb (desktop widget) — the ambient "wow" half of the attention
--- pulse. Where the bar dot is a glanceable glyph, the orb is a softly *breathing*
--- disc on the desktop that radiates Claude's most-urgent state across every active
--- session: calm and slow at idle, quick and insistent when Claude needs you.
+-- pulse. Where the bar dot is a small static glyph, the orb is the SAME state icon
+-- blown up on the desktop, magnifying in and out like a "bat signal": calm and slow
+-- at idle, quick and insistent when Claude needs you.
 --
 -- It is a pure VIEW. pulse.luau already rolls all sessions up for the bar dot and
 -- now mirrors that rollup into noctalia.state ("cc.pulse"); the orb just subscribes
@@ -10,24 +10,26 @@
 --
 -- Unlike the bar dot's DISCRETE glyph/color, the orb does PER-FRAME motion:
 -- desktopWidget.setNeedsFrameTick(true) asks the host for onFrameTick(dt) callbacks
--- (dt = seconds since last frame); a sine "breath" drives the disc opacity and a
--- subtle glyph scale. Breath speed/depth come from the state, so the motion itself
--- carries meaning. When nothing is animating differently we keep ticking a slow
--- idle breath — ambient presence is the whole point of the orb.
+-- (dt = seconds since last frame); a raised-cosine "breath" drives the glyph's size
+-- (the magnification) and opacity together. Breath speed/depth come from the state,
+-- so the motion itself carries meaning. We keep ticking a slow idle breath even with
+-- no sessions — ambient presence is the whole point of the orb.
 --
--- API surface (verified against noctalia 5.0.0):
+-- API surface (verified against the noctalia 5.0.0 binary — no source ships; props
+-- read from the ui reconciler's BoxProps/applyProps tables):
 --   desktopWidget.render(tree)            -- declarative ui.* tree
 --   desktopWidget.setNeedsFrameTick(bool) -- opt into onFrameTick(dt)
---   ui.box{ width,height,radius,backgroundColor,opacity,shadow,align } + children
---   ui.glyph{ name,size,color }   ui.column/row   ui.label{ text,fontSize,color,... }
---   noctalia.state.watch(key, cb)
+--   ui.glyph{ name,size,color,opacity,width,height }  ui.column/row  ui.label{ text,
+--     fontSize,color,maxWidth,maxLines,textAlign }   noctalia.state.watch(key, cb)
+-- NB: ui.box is a LEAF (RectNode) — it draws no children, its fill prop is `fill`
+-- (not color/backgroundColor) and its soft glow is `softness`; there is no overlay
+-- control, which is why the orb is a magnifying glyph rather than a glyph-on-disc.
 -- Colors are the global scheme accents (secondary/primary/error) — same map as the
--- bar dot — with the matching on_<accent> token for the glyph so it always reads on
--- top of the filled disc. See pulse.luau for the shared state→visual map.
+-- bar dot. See pulse.luau for the shared state→visual map.
 
--- Per-state look + motion. `color` is the disc accent (glyph uses on_<color>).
--- `period` = seconds per full breath; `omin`/`omax` = disc opacity bounds the breath
--- swings between. Faster + deeper = more urgent. `word` labels the state below.
+-- Per-state look + motion. `color` is the accent the icon is drawn in; `glyph` is the
+-- Tabler icon (same one the bar dot shows). `period` = seconds per full breath;
+-- `omin`/`omax` = opacity bounds. Faster + deeper = more urgent. `word` labels it.
 local VISUAL = {
   idle            = { glyph = "robot",          color = "secondary", period = 5.0, omin = 0.42, omax = 0.78, word = "idle" },
   turn_start      = { glyph = "brain",          color = "primary",   period = 2.4, omin = 0.55, omax = 1.00, word = "thinking" },
@@ -38,11 +40,12 @@ local VISUAL = {
   error           = { glyph = "alert-triangle", color = "error",     period = 1.1, omin = 0.38, omax = 1.00, word = "error" },
 }
 
--- on-accent contrast token for the glyph (all confirmed scheme colors).
-local ON = { primary = "on_primary", secondary = "on_secondary", error = "on_error" }
-
-local D = 76          -- orb diameter (logical px)
-local GLYPH_BASE = 32 -- glyph size at mid-breath
+-- The orb IS the bar icon, magnifying in and out — a desktop "bat signal". The
+-- glyph size pulses between MIN and MAX with the breath; a fixed BOX reserves space
+-- so the magnification never nudges the label below it.
+local GLYPH_MIN = 48
+local GLYPH_MAX = 82
+local GLYPH_BOX = 88
 
 -- Live status mirrored from the bar pulse. `count` 0 means no active sessions.
 local cur = { state = "idle", count = 0, model = "?", tin = 0, tout = 0 }
@@ -62,35 +65,37 @@ local function breath()
   return v, s
 end
 
--- One status line under the orb: idle/working word, session count, or burn.
+-- One compact status line under the orb. Kept short so it doesn't get clipped by a
+-- narrow widget box: just the state word, or a session count, plus burn when there's
+-- a single attributable session.
 local function subtitle(v)
   if cur.count > 1 then
-    return cur.count .. " sessions · " .. v.word
+    return cur.count .. " sessions"
   end
-  local line = "Claude: " .. v.word
   if cur.count == 1 and cur.model ~= "?" and (cur.tin + cur.tout) > 0 then
-    line = line .. "  ·  " .. cur.model .. " " .. kfmt(cur.tin) .. "/" .. kfmt(cur.tout)
+    return v.word .. " · " .. kfmt(cur.tin) .. "/" .. kfmt(cur.tout)
   end
-  return line
+  return v.word
 end
 
 local function render()
   local v, s = breath()
   local opacity = v.omin + (v.omax - v.omin) * s
-  local glyphSize = GLYPH_BASE * (0.90 + 0.18 * s) -- subtle scale, in step with the breath
+  local size = GLYPH_MIN + (GLYPH_MAX - GLYPH_MIN) * s -- the magnification swing
 
-  desktopWidget.render(ui.column({ gap = 8, padding = 14, align = "center" }, {
-    ui.box({
-      width = D, height = D, radius = D / 2,   -- radius = D/2 → a circle
-      backgroundColor = v.color, opacity = opacity,
-      shadow = v.color,                          -- accent glow that breathes with the disc
-      align = "center",
-    }, {
-      ui.glyph({ name = v.glyph, size = glyphSize, color = ON[v.color] or "on_surface" }),
+  desktopWidget.render(ui.column({ gap = 6, padding = 12, align = "center" }, {
+    -- The "bat signal": the state icon itself, magnifying larger/smaller and breathing
+    -- opacity in the accent color — the same glyph the bar dot shows for this state.
+    -- A fixed width/height reserves the icon's footprint so the pulse doesn't shove
+    -- the label as it grows. (ui.glyph can't carry the box's soft `softness` glow, and
+    -- there's no overlay control, so the icon pulses crisp rather than haloed.)
+    ui.glyph({
+      name = v.glyph, size = size, color = v.color, opacity = opacity,
+      width = GLYPH_BOX, height = GLYPH_BOX,
     }),
     ui.label({
       text = subtitle(v), fontSize = 12, color = "on_surface_variant",
-      maxWidth = 200, maxLines = 1, align = "center",
+      maxWidth = 180, maxLines = 1, textAlign = "center",
     }),
   }))
 end
