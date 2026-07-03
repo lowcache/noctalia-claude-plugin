@@ -306,6 +306,18 @@ function onIpc(event, payload)
   render()
 end
 
+-- Click the dot to show the answer panel — the full-length surface for /cc ?
+-- quick-ask answers (the toast only carries a preview; cc.luau publishes the
+-- complete text to "cc.answer" and answer.luau renders it scrollable).
+-- panel-OPEN, not -toggle: open is idempotent, so it survives the click handler
+-- firing more than once per click (a toggle nets out to closed again — click
+-- appeared dead in live testing). Dismiss is click-outside/Esc, panel idiom.
+function onClick()
+  if not noctalia.runAsync("noctalia msg panel-open 'lowcache/claude:answer'") then
+    noctalia.notifyError("pulse", "could not launch the answer panel")
+  end
+end
+
 -- Breath timer. Re-arm the interval each tick (the pattern proven live in the
 -- barpulse prototype), advance the clock, repaint the glyph brightness only —
 -- glyph/tooltip/rollup are event-driven in render().

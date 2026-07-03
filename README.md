@@ -37,6 +37,11 @@ contract. `hooks/pulse.py` is the Claude Code adapter (telemetry-enriched);
 - `orb.luau` — the desktop "presence orb": a `[[desktop_widget]]` that subscribes to
   `cc.pulse` and *breathes* the same state via `setNeedsFrameTick`/`onFrameTick`
   (sine-driven opacity + glyph scale, tempo keyed to urgency). Pure view, no hooks.
+- `answer.luau` — the `[[panel]]` that carries `/cc ?` answers in full: a toast
+  clips long bodies with no scroll, so `cc.luau` publishes the complete text to
+  `noctalia.state` (`cc.answer`) and the panel renders it wrapped + scrollable.
+  Open it by clicking the bar pulse, from the "Show last answer" row under `/cc`,
+  or `noctalia msg panel-toggle lowcache/claude:answer`. Pure view, like the orb.
 - `shim/noctalia-mcp.py` — stdio MCP shim (prototype; port to Rust for release).
 - `hooks/settings.snippet.json` — merge into `~/.claude/settings.json`.
 - `config.example.toml` — the backend seam, documented (not yet read).
@@ -66,13 +71,14 @@ returns `error: no plugin entry matched`, which confirms the dispatch path.)
 ## Development
 
 `nix/` carries a self-contained luau toolchain for testing the widget logic
-(`pulse.luau`, `orb.luau`) offline — no noctalia reload needed to catch a regression
-in the state machine, the token-burn tooltip formatting, or the orb's breath math.
+(`pulse.luau`, `orb.luau`, `answer.luau`) offline — no noctalia reload needed to
+catch a regression in the state machine, the token-burn tooltip formatting, the
+orb's breath math, or the answer panel's render guard.
 
 ```sh
 nix run ./nix#test        # run every widget suite (from the repo root)
-nix run ./nix#pulse       # bar dot only       nix run ./nix#orb   # presence orb only
-nix develop ./nix         # shell with `luau` + the *-test runners on PATH
+nix run ./nix#pulse       # bar dot only       nix run ./nix#orb     # presence orb only
+nix develop ./nix         # shell with luau     nix run ./nix#answer  # answer panel only
 ```
 
 Each runner concatenates a stub prelude (the `barWidget`/`desktopWidget`/`ui`/

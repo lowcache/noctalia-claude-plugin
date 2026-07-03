@@ -36,11 +36,22 @@ local EVENT = {
 -- trusted literal — $HOME/$PATH are meant to expand in the `/bin/sh -c` context.
 local PATH_PREFIX = 'PATH="$HOME/.local/bin:$PATH" '
 
+-- A quick-ask answer is delivered as a desktop toast first, and toasts clip
+-- after a couple of lines with no scroll — so steer the model toward toast-sized
+-- answers at the source. Long answers still arrive intact: the full text goes to
+-- the answer panel (see publish_answer below), the toast just leads with less.
+local ASK_NOTE = table.concat({
+  "Your answer is delivered as a desktop notification. Lead with the direct answer",
+  "in one or two short sentences; add detail only if the question genuinely needs it.",
+  "Plain text only — no markdown formatting.",
+}, " ")
+
 -- claude only. [CEILING]: no registry — add a backends table + a second parse()
 -- branch when ollama/router lands; this is the seam, zero call-site change needed.
 local function backend_command(prompt)
   -- Claude Code: -p (print/non-interactive) requires --verbose for stream-json.
-  return PATH_PREFIX .. "claude --output-format stream-json --verbose -p " .. shq(prompt)
+  return PATH_PREFIX .. "claude --output-format stream-json --verbose"
+      .. " --append-system-prompt " .. shq(ASK_NOTE) .. " -p " .. shq(prompt)
 end
 
 -- one stream-json line → an EVENT (or nil). Claude Code emits one JSON object per
@@ -85,6 +96,42 @@ end
 -- one ephemeral "ask" session and drops it when the ask ends.
 local function set_state(s) noctalia.state.set("cc.state", s) end
 
+-- ── answer delivery ──────────────────────────────────────────────────────────
+-- A toast clips long bodies with no scroll, so it is the preview surface only:
+-- the complete answer is published to "cc.answer" and rendered wrapped +
+-- scrollable by the answer panel (answer.luau). The panel opens from a click on
+-- the bar pulse, the "Show last answer" launcher row, or the CLI.
+local ANSWER_PANEL = "lowcache/claude:answer"
+
+local function publish_answer(q, text, is_err)
+  noctalia.state.set("cc.answer", {
+    q = q,
+    text = text,
+    error = is_err == true,
+    at = noctalia.formatTime("%H:%M"),
+  })
+end
+
+-- Fit the toast: collapse whitespace and cut at a word boundary. Returns the
+-- preview and whether anything was dropped (→ the toast gains a pointer to the
+-- full answer).
+local PREVIEW_MAX = 200
+local function preview(text)
+  local flat = text:gsub("%s+", " ")
+  if #flat <= PREVIEW_MAX then return flat, false end
+  local cut = flat:sub(1, PREVIEW_MAX):match("^(.*)%s%S*$") or flat:sub(1, PREVIEW_MAX)
+  return cut .. " …", true
+end
+
+-- ONE surface per answer: while the answer panel is open (it sets this flag) it
+-- live-refreshes from cc.answer, so it IS the delivery — a toast on top would
+-- duplicate it, and dismissing that toast clicks outside the panel, which the
+-- click-shield turns into closing the panel as well (verified live: toast +
+-- panel died to one click). Panel open → publish only; panel closed → toast.
+local function panel_showing()
+  return noctalia.state.get("cc.answer.open") == true
+end
+
 -- ── context injection ────────────────────────────────────────────────────────
 -- Make /cc-launched sessions desktop-AWARE (senses) and desktop-CAPABLE (hands)
 -- by wiring the noctalia MCP shim and a role note into the launch.
@@ -117,20 +164,32 @@ local CONTEXT_FLAGS =
 -- ── /cc routing ──────────────────────────────────────────────────────────────
 local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
+-- The last quick-ask answer, if any, earns a launcher row that reopens the
+-- answer panel — the recovery path when the toast has already expired.
+local function answer_row()
+  local a = noctalia.state.get("cc.answer")
+  if type(a) ~= "table" or type(a.text) ~= "string" or a.text == "" then return nil end
+  return { id = "answer", title = "Show last answer", subtitle = a.q, glyph = "message-2" }
+end
+
 function onQuery(query)
   local text = trim(query)
   if text == "" then
-    launcher.setResults(query, {
+    local results = {
       { id = "continue", title = "Resume last Claude session", glyph = "robot" },
-    })
+    }
+    results[#results + 1] = answer_row()
+    launcher.setResults(query, results)
     return
   end
   local ask = text:match("^%?%s*(.*)$")
   if ask ~= nil then
     if ask == "" then
-      launcher.setResults(query, {
+      local results = {
         { id = "_askhint", title = "Ask Claude (one-shot)", subtitle = "Type a question after ?", glyph = "message-dots" },
-      })
+      }
+      results[#results + 1] = answer_row()
+      launcher.setResults(query, results)
     else
       launcher.setResults(query, {
         { id = "ask:" .. ask, title = "Ask Claude (one-shot)", subtitle = ask, glyph = "message-dots" },
@@ -152,6 +211,11 @@ function onActivate(id)
     noctalia.runInTerminal(PATH_PREFIX .. "claude " .. CONTEXT_FLAGS .. " --continue")
     return
   end
+  if id == "answer" then
+    -- reopen the answer panel with the last quick-ask answer (fixed id, no user input)
+    noctalia.runAsync("noctalia msg panel-open " .. shq(ANSWER_PANEL))
+    return
+  end
   local task = id:match("^task:(.*)$")
   if task then
     noctalia.runInTerminal(PATH_PREFIX .. "claude " .. CONTEXT_FLAGS .. " " .. shq(task))
@@ -171,10 +235,25 @@ function onActivate(id)
         acc = acc .. ev.text
       elseif ev.kind == EVENT.turn_end then
         local final = (ev.text and ev.text ~= "") and ev.text or acc
-        noctalia.notify("Claude", final ~= "" and final or "(no output)")
+        if final == "" then
+          noctalia.notify("Claude", "(no output)")
+        else
+          publish_answer(ask, final, false)
+          if not panel_showing() then
+            local body, clipped = preview(final)
+            if clipped then body = body .. "\nFull answer: click the bar pulse" end
+            noctalia.notify("Claude", body)
+          end
+        end
       elseif ev.kind == EVENT.error then
         local final = (ev.text and ev.text ~= "") and ev.text or acc
-        noctalia.notifyError("Claude", final ~= "" and final or "ask failed")
+        if final == "" then final = "ask failed" end
+        publish_answer(ask, final, true)
+        if not panel_showing() then
+          local body, clipped = preview(final)
+          if clipped then body = body .. "\nFull answer: click the bar pulse" end
+          noctalia.notifyError("Claude", body)
+        end
       end
     end)
     return

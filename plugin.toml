@@ -30,6 +30,16 @@ entry = "pulse.luau"
 id = "orb"
 entry = "orb.luau"
 
+# The answer panel — full-length scrollable surface for /cc ? quick-ask answers
+# (a notification toast clips long bodies; it carries only a preview). Opens on
+# a click on the bar pulse, from the "Show last answer" launcher row, or via
+# `noctalia msg panel-toggle lowcache/claude:answer`.
+[[panel]]
+id = "answer"
+entry = "answer.luau"
+width = 460
+height = 420
+
 # /cc — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
 # module system, and this is the only entry that talks to a model.

@@ -53,6 +53,13 @@
           "orb.luau"
           "tests/orb_spec.luau"
         ];
+      answerRunner =
+        pkgs:
+        mkRunner pkgs "answer-test" [
+          "tests/answer_prelude.luau"
+          "answer.luau"
+          "tests/answer_spec.luau"
+        ];
 
       # Runs every widget suite in turn; the program every entrypoint resolves to.
       allRunner =
@@ -62,8 +69,9 @@
           runtimeInputs = [ pkgs.luau ];
           text = ''
             root="''${1:-$PWD}"
-            echo "── pulse ──"; "${pulseRunner pkgs}/bin/pulse-test" "$root"
-            echo "── orb ──";   "${orbRunner pkgs}/bin/orb-test" "$root"
+            echo "── pulse ──";  "${pulseRunner pkgs}/bin/pulse-test" "$root"
+            echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
+            echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
           '';
         };
     in
@@ -74,18 +82,20 @@
             pkgs.luau
             (pulseRunner pkgs)
             (orbRunner pkgs)
+            (answerRunner pkgs)
             (allRunner pkgs)
           ];
           shellHook = ''
             echo "luau toolchain ready. Run the widget specs:  widget-test   (all)"
             echo "                                              pulse-test    (bar dot only)"
             echo "                                              orb-test      (presence orb only)"
+            echo "                                              answer-test   (answer panel only)"
           '';
         };
       });
 
       # `nix run ./nix#test` (or bare `nix run ./nix`) runs every widget suite.
-      # `nix run ./nix#pulse` / `#orb` run a single suite.
+      # `nix run ./nix#pulse` / `#orb` / `#answer` run a single suite.
       apps = forAll (
         pkgs:
         let
@@ -108,12 +118,17 @@
             type = "app";
             program = "${orbRunner pkgs}/bin/orb-test";
           };
+          answer = {
+            type = "app";
+            program = "${answerRunner pkgs}/bin/answer-test";
+          };
         }
       );
 
       packages = forAll (pkgs: {
         pulse-test = pulseRunner pkgs;
         orb-test = orbRunner pkgs;
+        answer-test = answerRunner pkgs;
         widget-test = allRunner pkgs;
       });
     };
