@@ -24,6 +24,15 @@ noctalia = {
     watch = function(_key, cb) __watch_cb = cb end,
     set = function(key, value) __state[key] = value end,
   },
+  -- breath timer + palette resolution stubs. readFile returning nil makes the
+  -- widget keep its fallback accents, so spec color expectations are fixed hex.
+  setUpdateInterval = function(_ms) end,
+  readFile = function(_path) return nil, "stub" end,
+  expandPath = function(p) return p end,
+  getenv = function(_name) return nil end,
+  isDarkMode = function() return true end,
+  string = { urlEncode = function(s) return s end },
+  json = { decode = function(_s) return nil end },
 }
 
 -- tiny assertion harness (full report, then non-zero exit via error()).

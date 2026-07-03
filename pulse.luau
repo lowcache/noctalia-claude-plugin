@@ -7,26 +7,97 @@
 --   • cc.luau writes "cc.state" (the launcher quick-ask) → watched here as one
 --     ephemeral pseudo-session ("ask"), removed when the ask completes.
 --
--- Bar widgets do DISCRETE state (glyph/color/tooltip), not per-frame animation.
+-- Bar plugin widgets have no per-frame tick (that's desktop-only), so the breath
+-- runs on noctalia.setUpdateInterval(ms) + the global update(): a raised-cosine
+-- BRIGHTNESS breath (the winner of the barpulse A/B prototype — the bar ignores
+-- 8-digit #RRGGBBAA alpha, but a 6-digit #RRGGBB scaled toward black reads as a
+-- glow). Discrete state (glyph/tooltip/session rollup) renders on events; the
+-- timer only advances the breath. A state change snaps the breath to its peak,
+-- so transitions read as a bright flash before settling into the rhythm.
+--
 -- The bar API is the `barWidget.*` table (NOT `widget`). Glyph names are Tabler
 -- icon names; an unknown name renders the skull fallback.
--- The smooth breathing "wow" lives in the companion presence orb (orb.luau, a
--- [[desktop_widget]] with setNeedsFrameTick/onFrameTick). The orb is a pure view:
--- this bar dot mirrors its session rollup to noctalia.state ("cc.pulse", at the end
--- of render below) and the orb subscribes — same state map, two surfaces.
+-- The companion presence orb (orb.luau, a [[desktop_widget]]) is a pure view:
+-- this bar dot mirrors its session rollup to noctalia.state ("cc.pulse", at the
+-- end of render below) and the orb subscribes — same state map, two surfaces.
 
--- Colors use only the global scheme's accents so the dot matches the other bar
--- widgets: `secondary` (the green accent) for the ambient/working states (idle,
--- tool), `primary` (orange) for the Claude-active states (thinking/responding/
--- done), and `error` (red) reserved for the attention bell + hard errors.
+-- ── live palette ─────────────────────────────────────────────────────────────
+-- Accent roles follow the global scheme so the dot matches the other bar
+-- widgets: `secondary` for the ambient/working states (idle, tool), `primary`
+-- for the Claude-active states (thinking/responding/done), `error` for the
+-- attention bell + hard errors. Brightness math needs real RGB, so the roles
+-- are resolved from the active palette JSON on disk:
+--   custom    → $XDG_CONFIG_HOME/noctalia/palettes/<name>.json
+--   community → $XDG_STATE_HOME/noctalia/community-palettes/<urlEncode(name)>.json
+-- (noctalia.string.urlEncode is the same urlEncode noctalia names the cache
+-- file with, so the round-trip is exact.)
+-- [CEILING]: builtin + wallpaper-generated palettes have no on-disk JSON (they
+-- live in the binary / the generator), so those sources keep the fallback
+-- accents below. Upgrade path: an upstream plugin API exposing resolved scheme
+-- colors.
+local ACCENTS = { secondary = "EAFF00", primary = "B4FF00", error = "FF4D1F" }
+
+local function xdg(env, fallback)
+  local v = noctalia.getenv and noctalia.getenv(env)
+  if type(v) == "string" and v ~= "" then return v end
+  return noctalia.expandPath(fallback)
+end
+
+-- Minimal [theme] reader: walk lines, track the section, keep quoted k/v pairs.
+-- (Indented subsections like [theme.templates] end the block; their keys are
+-- arrays/bools and would not match the quoted-string pattern anyway.)
+local function theme_cfg(toml)
+  local cfg, in_theme = {}, false
+  for line in (toml .. "\n"):gmatch("([^\n]*)\n") do
+    local sec = line:match("^%s*%[([^%]]+)%]")
+    if sec then
+      in_theme = (sec == "theme")
+    elseif in_theme then
+      local k, v = line:match('^%s*([%w_]+)%s*=%s*"(.-)"')
+      if k then cfg[k] = v end
+    end
+  end
+  return cfg
+end
+
+local function resolve_accents()
+  local toml = noctalia.readFile(xdg("XDG_STATE_HOME", "~/.local/state") .. "/noctalia/settings.toml")
+  if type(toml) ~= "string" then return end
+  local cfg = theme_cfg(toml)
+  local path
+  if cfg.source == "custom" and cfg.custom_palette then
+    path = xdg("XDG_CONFIG_HOME", "~/.config") .. "/noctalia/palettes/" .. cfg.custom_palette .. ".json"
+  elseif cfg.source == "community" and cfg.community_palette then
+    path = xdg("XDG_STATE_HOME", "~/.local/state") .. "/noctalia/community-palettes/"
+        .. noctalia.string.urlEncode(cfg.community_palette) .. ".json"
+  else
+    return -- builtin / wallpaper-generated: keep current accents
+  end
+  local raw = noctalia.readFile(path)
+  if type(raw) ~= "string" then return end
+  local pal = noctalia.json.decode(raw)
+  if type(pal) ~= "table" then return end
+  local m = pal[noctalia.isDarkMode() and "dark" or "light"] or pal.dark or pal
+  if type(m) ~= "table" then return end
+  local function hex(c)
+    return type(c) == "string" and c:match("^#(%x%x%x%x%x%x)$") or nil
+  end
+  ACCENTS.secondary = hex(m.mSecondary) or ACCENTS.secondary
+  ACCENTS.primary = hex(m.mPrimary) or ACCENTS.primary
+  ACCENTS.error = hex(m.mError) or ACCENTS.error
+end
+
+-- ── state map ────────────────────────────────────────────────────────────────
+-- `color` names an ACCENTS role; `period` is the breath cycle in seconds —
+-- urgency reads as tempo (needs-you breathes fast, idle slow).
 local VISUAL = {
-  idle            = { glyph = "robot",          color = "secondary", tip = "Claude: idle" },
-  turn_start      = { glyph = "brain",          color = "primary",   tip = "Claude: thinking" },
-  text            = { glyph = "message-dots",   color = "primary",   tip = "Claude: responding" },
-  tool_start      = { glyph = "tool",           color = "secondary", tip = "Claude: running a tool" },
-  needs_attention = { glyph = "bell-ringing",   color = "error",     tip = "Claude needs you" },
-  turn_end        = { glyph = "bell",           color = "primary",   tip = "Claude: done — ready for you" },
-  error           = { glyph = "alert-triangle", color = "error",     tip = "Claude: error" },
+  idle            = { glyph = "robot",          color = "secondary", tip = "Claude: idle",                    period = 8.0 },
+  turn_start      = { glyph = "brain",          color = "primary",   tip = "Claude: thinking",                period = 5.0 },
+  text            = { glyph = "message-dots",   color = "primary",   tip = "Claude: responding",              period = 4.5 },
+  tool_start      = { glyph = "tool",           color = "secondary", tip = "Claude: running a tool",          period = 5.0 },
+  needs_attention = { glyph = "bell-ringing",   color = "error",     tip = "Claude needs you",                period = 3.0 },
+  turn_end        = { glyph = "bell",           color = "primary",   tip = "Claude: done — ready for you",    period = 5.5 },
+  error           = { glyph = "alert-triangle", color = "error",     tip = "Claude: error",                   period = 3.5 },
 }
 
 -- With several sessions in different states, the bar shows the most urgent one:
@@ -47,6 +118,37 @@ local STATE_WORD = {
 local sessions = {}
 local seq = 0
 
+-- ── breath ───────────────────────────────────────────────────────────────────
+local INTERVAL_MS = 60          -- ~16 fps re-render (bars can't do 60 fps)
+local BMIN, BMAX = 0.45, 1.00   -- brightness floor/ceiling the glyph breathes between
+local PALETTE_EVERY = 128       -- re-resolve accents every ~7.7 s so theme changes follow
+
+local cur = "idle"              -- most-urgent state across sessions (drives glyph + tempo)
+local phase = VISUAL.idle.period / 2  -- breath clock, seconds; born at peak brightness
+local ticks = 0
+
+local function level_for(period) -- raised-cosine brightness in [BMIN, BMAX]
+  local t = phase % period
+  local s = 0.5 - 0.5 * math.cos((t / period) * 2 * math.pi)
+  return BMIN + (BMAX - BMIN) * s
+end
+
+-- Scale an "RRGGBB" accent toward black by factor b, returning "#RRGGBB".
+local function dimmed(rgb, b)
+  local function ch(i)
+    local x = math.floor((tonumber(rgb:sub(i, i + 1), 16) or 0) * b + 0.5)
+    if x < 0 then x = 0 elseif x > 255 then x = 255 end
+    return x
+  end
+  return string.format("#%02X%02X%02X", ch(1), ch(3), ch(5))
+end
+
+local function paint()
+  local v = VISUAL[cur] or VISUAL.idle
+  barWidget.setGlyphColor(dimmed(ACCENTS[v.color] or ACCENTS.secondary, level_for(v.period)))
+end
+
+-- ── session plumbing ─────────────────────────────────────────────────────────
 local function split(s, sep)
   local out = {}
   for part in (s .. sep):gmatch("(.-)" .. sep) do out[#out + 1] = part end
@@ -103,9 +205,14 @@ local function render()
     local p = STATE_PRIO[s.state] or 0
     if p > bestp then bestp = p; best = s.state end
   end
-  local v = VISUAL[best] or VISUAL.idle
+  if best ~= cur then
+    cur = best
+    -- snap the breath to its peak so a state change reads as a bright flash
+    phase = (VISUAL[cur] or VISUAL.idle).period / 2
+  end
+  local v = VISUAL[cur] or VISUAL.idle
   barWidget.setGlyph(v.glyph)
-  barWidget.setGlyphColor(v.color)
+  paint()
 
   local tip
   if count == 0 then
@@ -135,8 +242,10 @@ local function render()
   -- Mirror the rollup to shared state so the presence orb (orb.luau, a separate
   -- desktop widget) renders the same status without re-deriving it. The bar dot
   -- stays the single place that aggregates sessions; the orb is a pure subscriber.
-  -- Snapshot carries only what the orb needs: the most-urgent state, the session
-  -- count, and burn totals (single-session figures when count==1, the sum when >1).
+  -- Published only here (events), never from the breath timer, so orb watchers
+  -- aren't spammed 16×/s. Snapshot carries only what the orb needs: the most-
+  -- urgent state, the session count, and burn totals (single-session figures
+  -- when count==1, the sum when >1).
   local snap = { state = best, count = count, model = "?", tin = 0, tout = 0, cr = 0 }
   if count == 1 and has_burn(arr[1]) then
     local s = arr[1]
@@ -197,4 +306,18 @@ function onIpc(event, payload)
   render()
 end
 
+-- Breath timer. Re-arm the interval each tick (the pattern proven live in the
+-- barpulse prototype), advance the clock, repaint the glyph brightness only —
+-- glyph/tooltip/rollup are event-driven in render().
+function update()
+  noctalia.setUpdateInterval(INTERVAL_MS)
+  phase = phase + INTERVAL_MS / 1000
+  if phase > 1e6 then phase = 0 end
+  ticks = ticks + 1
+  if ticks % PALETTE_EVERY == 0 then resolve_accents() end
+  paint()
+end
+
+resolve_accents()
+noctalia.setUpdateInterval(INTERVAL_MS)
 render()

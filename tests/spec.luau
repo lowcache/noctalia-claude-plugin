@@ -7,21 +7,21 @@
 -- Load ran render() with no sessions → clean idle.
 expect("load → idle tooltip", __tt, "Claude: idle")
 expect("load → robot glyph", __glyph, "robot")
-expect("load → idle uses green secondary", __color, "secondary")
+expect("load → idle uses secondary accent at peak", __color, "#EAFF00")
 
 -- One session, full telemetry → single-session burn tooltip + bell.
 onIpc("turn_end", "opus-4-8,45129,112432,202412,4589306,alpha")
 expect("1 session → burn tooltip", __tt,
   "Claude: done — ready for you\nopus-4-8 · 247.5k in / 112.4k out · 4.6M cached")
 expect("1 session → bell glyph", __glyph, "bell")
-expect("turn_end uses orange primary", __color, "primary")
+expect("turn_end uses primary accent", __color, "#B4FF00")
 
 -- Same session updates in place (same sid) → still one session, new numbers.
 onIpc("tool_start", "opus-4-8,50000,120000,200000,5000000,alpha")
 expect("same sid updates in place", __tt,
   "Claude: running a tool\nopus-4-8 · 250.0k in / 120.0k out · 5.0M cached")
 expect("same sid → tool glyph", __glyph, "tool")
-expect("tool uses green secondary", __color, "secondary")
+expect("tool uses secondary accent", __color, "#EAFF00")
 
 -- A second session appears → aggregate view; glyph = most urgent (tool > thinking).
 onIpc("turn_start", "haiku-4-5,1200,340,0,0,beta")
@@ -35,7 +35,7 @@ expect("2 sessions → aggregate tooltip", __tt,
 -- Urgency wins: beta needs you → bell-ringing regardless of recency/order.
 onIpc("needs_attention", "haiku-4-5,1200,340,0,0,beta")
 expect("needs_attention → bell-ringing glyph", __glyph, "bell-ringing")
-expect("needs_attention stays red", __color, "error")
+expect("needs_attention uses error accent", __color, "#FF4D1F")
 contains("needs_attention tooltip lists beta", __tt, "beta · needs you · haiku-4-5 1.2k/340")
 
 -- Quick-ask (cc.state path) joins as an ephemeral, telemetry-less session.
@@ -59,7 +59,7 @@ expect("session_end keeps beta urgency", __glyph, "bell-ringing")
 onIpc("session_end", "haiku-4-5,0,0,0,0,beta")
 expect("all ended → idle tooltip", __tt, "Claude: idle")
 expect("all ended → robot glyph", __glyph, "robot")
-expect("all ended → green secondary", __color, "secondary")
+expect("all ended → secondary accent", __color, "#EAFF00")
 
 -- A session with no real telemetry yet (SessionStart before first turn) shows
 -- just its state, no "? 0/0" noise.
@@ -95,5 +95,15 @@ onIpc("idle", "opus-4-8,10,20,0,0,delta")
 expect("real session idle is kept (not retired)", __tt, "Claude: idle\nopus-4-8 · 10 in / 20 out")
 onIpc("session_end", "opus-4-8,0,0,0,0,delta")
 expect("real session retires only on session_end", __glyph, "robot")
+
+-- The breath: state changes render at peak brightness (asserted above as the full
+-- accent hex); timer ticks advance the phase and dim the glyph without touching
+-- the glyph or tooltip (those are event-driven).
+local tt_before, glyph_before = __tt, __glyph
+for _ = 1, 33 do update() end -- ~2 s into the 8 s idle cycle
+expect("breath dims off-peak", __color ~= "#EAFF00", true)
+contains("breath color stays a 6-digit hex", __color, "#")
+expect("timer tick leaves glyph alone", __glyph, glyph_before)
+expect("timer tick leaves tooltip alone", __tt, tt_before)
 
 done()
