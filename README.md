@@ -24,6 +24,11 @@ drift), not unknowns. **Next: live-install + a bar dispatch test.**
 | **Act** | `shim/` + `cc.luau` | `noctalia msg <action>` (reply on stdout); `notify-send` for toasts |
 | **Pulse** | `pulse.luau` + `hooks/` | Claude hooks → `noctalia msg plugin lowcache/claude:pulse all <event>` → `onIpc` → bar reacts |
 
+The pulse wire format is agent-agnostic — see **[PROTOCOL.md](PROTOCOL.md)** for
+the event vocabulary, payload CSV, session semantics, and the fail-open adapter
+contract. `hooks/pulse.py` is the Claude Code adapter (telemetry-enriched);
+`hooks/pulse-emit` is a generic POSIX-sh emitter for any other agent or script.
+
 - `cc.luau` — `/cc` launcher (terminal launch + one-shot ask) **and** the single
   backend chokepoint (`invoke`/`parse`, normalized event vocabulary). claude-only,
   seam open for ollama/router later.
