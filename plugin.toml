@@ -4,7 +4,7 @@
 
 id = "lowcache/claude"
 name = "Claude Code Companion"
-version = "0.0.1"
+version = "1.0.0"
 # Prereqs (the [[panel]] kind, ui controls, plugin IPC dispatch, the barWidget/onIpc
 # surface) shipped in the 5.0.0 build running here (flake input rev 623210223c).
 # Bump if a future entry needs an API added after this rev.
@@ -33,7 +33,7 @@ entry = "orb.luau"
 # The answer panel — full-length scrollable surface for /cc ? quick-ask answers
 # (a notification toast clips long bodies; it carries only a preview). Opens on
 # a click on the bar pulse, from the "Show last answer" launcher row, or via
-# `noctalia msg panel-toggle lowcache/claude:answer`.
+# `noctalia msg panel-open lowcache/claude:answer`.
 [[panel]]
 id = "answer"
 entry = "answer.luau"

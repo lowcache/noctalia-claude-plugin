@@ -2,7 +2,7 @@
 -- A notification toast clips long bodies and cannot scroll, so cc.luau publishes
 -- the complete answer to noctalia.state "cc.answer" and this panel renders it
 -- wrapped and scrollable. Ways in: click the bar pulse, the "Show last answer"
--- row under /cc, or `noctalia msg panel-toggle lowcache/claude:answer`.
+-- row under /cc, or `noctalia msg panel-open lowcache/claude:answer`.
 --
 -- Pure subscriber, same doctrine as the orb: cc.luau owns the state, this panel
 -- only renders it. state.watch() callbacks proved unreliable for bar widgets
