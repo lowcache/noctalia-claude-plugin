@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Pulse hook dispatcher (lowcache/claude plugin).
+"""Pulse hook dispatcher (lowcache/c3p-no plugin).
 
 Bridges a Claude Code lifecycle hook to the pulse bar widget, enriching the
 event with live model + token-burn telemetry parsed from the session transcript.
@@ -10,7 +10,7 @@ Invoked by the hooks in settings.snippet.json as:
 Hook JSON arrives on stdin (transcript_path, session_id). The widget is driven via
 noctalia's documented plugin IPC (`noctalia msg --help`):
 
-    noctalia msg plugin lowcache/claude:pulse all <event> [payload]
+    noctalia msg plugin lowcache/c3p-no:pulse all <event> [payload]
 
 `[payload]` is a single positional token, so the payload is a SPACE-FREE CSV the
 widget (pulse.luau) parses:
@@ -38,7 +38,7 @@ import os
 import subprocess
 import sys
 
-PLUGIN = "lowcache/claude:pulse"
+PLUGIN = "lowcache/c3p-no:pulse"
 TARGET = "all"
 
 

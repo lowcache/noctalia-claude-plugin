@@ -1,10 +1,10 @@
 -- The attention pulse (bar widget) — a glanceable live readout of Claude across
 -- ALL active sessions. Two feeds converge on the session table:
 --   • Claude Code hooks fire the plugin-dispatch IPC → onIpc here (the reflex):
---       noctalia msg plugin lowcache/claude:pulse all <event> [payload]
+--       noctalia msg plugin lowcache/c3p-no:pulse all <event> [payload]
 --     payload = "model,in,out,cacheCreate,cacheRead,session" (hooks/pulse.py).
 --     Each real session is tracked by its id; SessionEnd removes it.
---   • cc.luau writes "cc.state" (the launcher quick-ask) → watched here as one
+--   • c3.luau writes "c3.state" (the launcher quick-ask) → watched here as one
 --     ephemeral pseudo-session ("ask"), removed when the ask completes.
 --
 -- Bar plugin widgets have no per-frame tick (that's desktop-only), so the breath
@@ -18,7 +18,7 @@
 -- The bar API is the `barWidget.*` table (NOT `widget`). Glyph names are Tabler
 -- icon names; an unknown name renders the skull fallback.
 -- The companion presence orb (orb.luau, a [[desktop_widget]]) is a pure view:
--- this bar dot mirrors its session rollup to noctalia.state ("cc.pulse", at the
+-- this bar dot mirrors its session rollup to noctalia.state ("c3.pulse", at the
 -- end of render below) and the orb subscribes — same state map, two surfaces.
 
 -- ── live palette ─────────────────────────────────────────────────────────────
@@ -257,7 +257,7 @@ local function render()
     end
     snap.tin, snap.tout = Tin, Tout
   end
-  noctalia.state.set("cc.pulse", snap)
+  noctalia.state.set("c3.pulse", snap)
 end
 
 local function touch(sid, state, p)
@@ -274,7 +274,7 @@ end
 -- launcher quick-ask path (no session id, no telemetry). Ephemeral: shown while
 -- streaming, dropped when it finishes — the answer is delivered via notify, so a
 -- lingering "done" would only inflate the session count.
-noctalia.state.watch("cc.state", function(s)
+noctalia.state.watch("c3.state", function(s)
   if type(s) ~= "string" then return end
   if s == "turn_end" or s == "error" then
     sessions["ask"] = nil
@@ -306,14 +306,14 @@ function onIpc(event, payload)
   render()
 end
 
--- Click the dot to show the answer panel — the full-length surface for /cc ?
--- quick-ask answers (the toast only carries a preview; cc.luau publishes the
--- complete text to "cc.answer" and answer.luau renders it scrollable).
+-- Click the dot to show the answer panel — the full-length surface for /c3 ?
+-- quick-ask answers (the toast only carries a preview; c3.luau publishes the
+-- complete text to "c3.answer" and answer.luau renders it scrollable).
 -- panel-OPEN, not -toggle: open is idempotent, so it survives the click handler
 -- firing more than once per click (a toggle nets out to closed again — click
 -- appeared dead in live testing). Dismiss is click-outside/Esc, panel idiom.
 function onClick()
-  if not noctalia.runAsync("noctalia msg panel-open 'lowcache/claude:answer'") then
+  if not noctalia.runAsync("noctalia msg panel-open 'lowcache/c3p-no:answer'") then
     noctalia.notifyError("pulse", "could not launch the answer panel")
   end
 end

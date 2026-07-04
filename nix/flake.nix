@@ -1,5 +1,5 @@
 {
-  description = "luau dev/test toolchain for the noctalia-claude plugin widgets (pulse.luau, orb.luau)";
+  description = "luau dev/test toolchain for the C3P-No (noctalia Claude Code companion) plugin widgets (pulse.luau, orb.luau)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 

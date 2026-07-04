@@ -1,24 +1,30 @@
-# Claude Code Companion · Noctalia v5
+# C3P-No · Claude Code Companion for Noctalia v5
 
-![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet) ![specs](https://img.shields.io/badge/specs-54%20passing-brightgreen)
+<p align="center">
+  <img src="assets/C3P-No.jpeg" alt="C3P-No — Noctalia Claude Code companion" width="340">
+</p>
+
+> Claude Perceive Practice Pulse Noctalia = C3P-No
+
+![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet) ![specs](https://img.shields.io/badge/specs-84%20passing-brightgreen)
 
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
 This plugin gives it a body. It wires noctalia into Claude's lifecycle so a **pulse** on your bar tracks every session, an **orb** on your desktop breathes along with the work, and an **answer panel** catches one-shot replies before they scroll away. The terminal keeps doing the actual thinking — permissions, tools, MCP, all native. This is just the nervous system that lets the rest of your desktop feel it.
 
-Built and live-tested against noctalia 5.0.0 (flake input `623210223c`), with 54 offline widget specs to keep the state machine honest.
+Built and live-tested against noctalia 5.0.0 (flake input `623210223c`), with 84 offline widget checks to keep the state machine honest.
 
 ---
 
-## The three nerves
+## The Three P's of C3P-No
 
-**Perceive.** `shim/noctalia-mcp.py` is a stdio MCP shim that hands Claude a live read on your machine — `niri msg -j` for windows, `playerctl` for what's playing, `noctalia msg status` for the shell itself. Launch through `/cc` and it wires in on its own.
+**Perceive.** `shim/noctalia-mcp.py` is a stdio MCP shim that hands Claude a live read on your machine — `niri msg -j` for windows, `playerctl` for what's playing, `noctalia msg status` for the shell itself. Launch through `/c3` and it wires in on its own.
 
-**Act.** `cc.luau` is the `/cc` launcher and the single door everything backend passes through. It normalizes the event vocabulary, fires `notify-send` toasts, and drives `noctalia msg` for panel actions — one chokepoint, so there's exactly one place to reason about.
+**Practice.** `c3.luau` is the `/c3` launcher and the single door everything backend passes through. It normalizes the event vocabulary, fires `notify-send` toasts, and drives `noctalia msg` for panel actions — one chokepoint, so there's exactly one place to reason about.
 
-**Pulse.** `pulse.luau` is the widget on your bar and the brain of the whole thing. Hook events land here over IPC; it tracks every session at once, shows you the most urgent one, breathes your accent color, and mirrors the rollup into `noctalia.state` under `cc.pulse` for anyone downstream.
+**Pulse.** `pulse.luau` is the widget on your bar and the brain of the whole thing. Hook events land here over IPC; it tracks every session at once, shows you the most urgent one, breathes your accent color, and mirrors the rollup into `noctalia.state` under `c3.pulse` for anyone downstream.
 
-Downstream is where the quiet pieces live. `orb.luau` is pure view — it subscribes to `cc.pulse` and breathes the same state frame by frame, opacity and glyph riding a sine wave, tempo climbing with urgency. No hooks, no logic, just a reflection. And `answer.luau` is the `[[panel]]` that holds a `/cc ?` reply in full — wrapped, scrollable, everything a toast would have clipped off the end.
+Downstream is where the quiet pieces live. `orb.luau` is pure view — it subscribes to `c3.pulse` and breathes the same state frame by frame, opacity and glyph riding a sine wave, tempo climbing with urgency. No hooks, no logic, just a reflection. And `answer.luau` is the `[[panel]]` that holds a `/c3 ?` reply in full — wrapped, scrollable, everything a toast would have clipped off the end.
 
 ---
 
@@ -26,10 +32,10 @@ Downstream is where the quiet pieces live. `orb.luau` is pure view — it subscr
 
 ```sh
 # clone and symlink into the plugins dir
-ln -s "$PWD" ~/.local/share/noctalia/plugins/claude
+ln -s "$PWD" ~/.local/share/noctalia/plugins/c3p-no
 
 # enable the plugin
-noctalia msg plugins enable lowcache/claude
+noctalia msg plugins enable lowcache/c3p-no
 ```
 
 Then, in order:
@@ -37,13 +43,13 @@ Then, in order:
 1. **Put the `pulse` widget on a bar** (Settings → Bar). Read the warning below first — this one isn't optional.
 2. Add the `orb` desktop widget if you want the ambient presence.
 3. Merge `hooks/settings.snippet.json` into `~/.claude/settings.json` so Claude's lifecycle hooks actually drive the pulse.
-4. Point Claude at `shim/noctalia-mcp.py` with `--mcp-config` to hand it the senses and hands. (Sessions you launch through `/cc` do this for you.)
+4. Point Claude at `shim/noctalia-mcp.py` with `--mcp-config` to hand it the senses and hands. (Sessions you launch through `/c3` do this for you.)
 
 Prove it works:
 
 ```sh
-noctalia msg plugin lowcache/claude:pulse all needs_attention   # bar icon → red bell
-noctalia msg plugin lowcache/claude:pulse all idle              # back to robot
+noctalia msg plugin lowcache/c3p-no:pulse all needs_attention   # bar icon → red bell
+noctalia msg plugin lowcache/c3p-no:pulse all idle              # back to robot
 ```
 
 > [!WARNING]
@@ -53,9 +59,9 @@ noctalia msg plugin lowcache/claude:pulse all idle              # back to robot
 
 ## Living with it
 
-`/cc <task>` opens a real Claude Code session in your terminal, shim already wired in. Bare `/cc` picks up where you left off (`claude --continue`). And `/cc ? <question>` is the quick one — a read-only ask that comes back as a toast and lands, in full, in the answer panel.
+`/c3 <task>` opens a real Claude Code session in your terminal, shim already wired in. Bare `/c3` picks up where you left off (`claude --continue`). And `/c3 ? <question>` is the quick one — a read-only ask that comes back as a toast and lands, in full, in the answer panel.
 
-That panel opens however you like it: click the pulse, use the "Show last answer" row under `/cc`, or run `noctalia msg panel-open lowcache/claude:answer`. Leave it open and it refreshes live while suppressing the toast, so you're never reading the same answer twice. A click outside or Esc puts it away.
+That panel opens however you like it: click the pulse, use the "Show last answer" row under `/c3`, or run `noctalia msg panel-open lowcache/c3p-no:answer`. Leave it open and it refreshes live while suppressing the toast, so you're never reading the same answer twice. A click outside or Esc puts it away.
 
 Hover the bar and the tooltip tells you where each session stands and what it's burning — input, output, cache reads. Run a few at once and you get a line per session plus a Σ total, with the icon always showing whichever one needs you most.
 
@@ -97,7 +103,7 @@ nix run ./nix#answer    # answer panel only
 nix develop ./nix       # shell with luau
 ```
 
-Each runner stitches together a stub prelude (the `barWidget` / `desktopWidget` / `ui` / `noctalia` API surface), the real widget source, and its spec, then runs the whole thing under `luau` and asserts on what the stubs recorded. The specs test the shipping source, not a copy of it — 54 in total, 38 across pulse and orb, 16 on the answer panel.
+Each runner stitches together a stub prelude (the `barWidget` / `desktopWidget` / `ui` / `noctalia` API surface), the real widget source, and its spec, then runs the whole thing under `luau` and asserts on what the stubs recorded. The specs test the shipping source, not a copy of it — 84 checks in all: 38 on pulse, 26 on orb, 20 on the answer panel.
 
 ---
 

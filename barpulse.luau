@@ -11,7 +11,7 @@
 --   MODE "A"  raised-cosine sine breath  (smooth glow, like the orb)
 --   MODE "B"  square wave                (discrete blink)
 --
--- It reads state from the same cc.pulse rollup pulse.luau publishes (so it needs none
+-- It reads state from the same c3.pulse rollup pulse.luau publishes (so it needs none
 -- of the session bookkeeping). Flip MODE + reload to compare.
 --
 -- [CEILING]: state RGB is hardcoded from the active dark palette (volnix:
@@ -68,7 +68,7 @@ end
 -- did not), so we POLL noctalia.state.get each tick instead — cheap, and the timer is
 -- already running. Only adopt a recognised state so a nil/garbage read can't blank it.
 local function refresh_state()
-  local snap = noctalia.state.get and noctalia.state.get("cc.pulse")
+  local snap = noctalia.state.get and noctalia.state.get("c3.pulse")
   if type(snap) == "table" and type(snap.state) == "string" and VISUAL[snap.state] then
     state = snap.state
   elseif type(snap) == "string" and VISUAL[snap] then
