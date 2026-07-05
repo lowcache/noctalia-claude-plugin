@@ -14,3 +14,6 @@ result-*
 .memory/archive/*.md
 .memory/inbox/*
 !.memory/inbox/.gitkeep
+
+# full-length capture sources, kept for re-trimming; not shipped
+assets/.raw/
