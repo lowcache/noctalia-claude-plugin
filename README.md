@@ -1,8 +1,8 @@
-# C3P-No · Claude Code Companion for Noctalia v5
-
 <p align="center">
   <img src="assets/c3p-no-thumbnail.webp" alt="C3P-No — a Claude Code companion for Noctalia: pulse, orb, and answer panel" width="760">
 </p>
+
+## Claude Code Companion for Noctalia v5 - C3P-No 
 
 > **C**laude · **P**erceive · **P**ractice · **P**ulse · **No**ctalia → C3P-No
 
