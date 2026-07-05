@@ -4,7 +4,7 @@
   <img src="assets/C3P-No.jpeg" alt="C3P-No — Noctalia Claude Code companion" width="340">
 </p>
 
-> Claude Perceive Practice Pulse Noctalia = C3P-No
+> **C**laude · **P**erceive · **P**ractice · **P**ulse · **No**ctalia → C3P-No
 
 ![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet) ![specs](https://img.shields.io/badge/specs-84%20passing-brightgreen)
 
@@ -16,15 +16,29 @@ Built and live-tested against noctalia 5.0.0 (flake input `623210223c`), with 84
 
 ---
 
-## The Three P's of C3P-No
+## See it
 
-**Perceive.** `shim/noctalia-mcp.py` is a stdio MCP shim that hands Claude a live read on your machine — `niri msg -j` for windows, `playerctl` for what's playing, `noctalia msg status` for the shell itself. Launch through `/c3` and it wires in on its own.
+<p align="center">
+  <img src="assets/pulse.gif" alt="The bar pulse and desktop orb breathing through a Claude session's lifecycle" width="380"><br>
+  <em>One session, start to finish: the <strong>pulse</strong> on the bar and the <strong>orb</strong> on the desktop breathe through idle, thinking, a tool run, done, and needs-you.</em>
+</p>
 
-**Practice.** `c3.luau` is the `/c3` launcher and the single door everything backend passes through. It normalizes the event vocabulary, fires `notify-send` toasts, and drives `noctalia msg` for panel actions — one chokepoint, so there's exactly one place to reason about.
+<p align="center">
+  <img src="assets/question.gif" alt="/c3 ? question answered in the answer panel" width="760"><br>
+  <em>Ask something quick with <code>/c3 ?</code> and the whole answer waits for you in the panel, instead of scrolling off the top of the terminal.</em>
+</p>
 
-**Pulse.** `pulse.luau` is the widget on your bar and the brain of the whole thing. Hook events land here over IPC; it tracks every session at once, shows you the most urgent one, breathes your accent color, and mirrors the rollup into `noctalia.state` under `c3.pulse` for anyone downstream.
+---
 
-Downstream is where the quiet pieces live. `orb.luau` is pure view — it subscribes to `c3.pulse` and breathes the same state frame by frame, opacity and glyph riding a sine wave, tempo climbing with urgency. No hooks, no logic, just a reflection. And `answer.luau` is the `[[panel]]` that holds a `/c3 ?` reply in full — wrapped, scrollable, everything a toast would have clipped off the end.
+## The three P's of C3P-No
+
+**Perceive.** `shim/noctalia-mcp.py` is a stdio MCP shim that hands Claude a live read on your machine: `niri msg -j` for the windows you have open, `playerctl` for what's playing, `noctalia msg status` for the state of the shell itself. Nothing to wire up by hand. Launch through `/c3` and it attaches itself.
+
+**Practice.** Everything on the backend funnels through `c3.luau`, the `/c3` launcher and the one door in. It normalizes the event vocabulary, throws `notify-send` toasts, and calls `noctalia msg` to move panels around. One chokepoint on purpose — so when something acts up, there's exactly one place to go look.
+
+**Pulse.** `pulse.luau` sits on your bar and runs the show. Hook events land here over IPC, and from there it does the rest: tracks every session at once, surfaces whichever one's most urgent, breathes in your accent color, and mirrors the rollup into `noctalia.state` under `c3.pulse` for anyone downstream to read.
+
+And downstream is where the quiet parts live. `orb.luau` is pure view. It subscribes to `c3.pulse` and breathes the same state frame by frame, glyph and opacity riding a sine wave, tempo picking up as things get urgent — no hooks, no logic of its own, just a reflection. `answer.luau` is the `[[panel]]` that catches a `/c3 ?` reply and holds the whole thing: wrapped, scrollable, all the parts a toast lops off the end.
 
 ---
 
