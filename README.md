@@ -8,6 +8,9 @@
 
 ![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet) ![specs](https://img.shields.io/badge/specs-84%20passing-brightgreen)
 
+**What it is:** a noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
+**Who it's for:** you run Claude Code (Anthropic's terminal AI agent) on a noctalia desktop. Don't run Claude Code? The signal bus is agent-agnostic — see [Wiring up other agents](#wiring-up-other-agents).
+
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
 This plugin gives it a body. It wires noctalia into Claude's lifecycle so a **pulse** on your bar tracks every session, an **orb** on your desktop breathes along with the work, and an **answer panel** catches one-shot replies before they scroll away. The terminal keeps doing the actual thinking — permissions, tools, MCP, all native. This is just the nervous system that lets the rest of your desktop feel it.
@@ -41,6 +44,13 @@ Built and live-tested against noctalia 5.0.0 (flake input `623210223c`), with 84
 And downstream is where the quiet parts live. `orb.luau` is pure view. It subscribes to `c3.pulse` and breathes the same state frame by frame, glyph and opacity riding a sine wave, tempo picking up as things get urgent — no hooks, no logic of its own, just a reflection. `answer.luau` is the `[[panel]]` that catches a `/c3 ?` reply and holds the whole thing: wrapped, scrollable, all the parts a toast lops off the end.
 
 ---
+
+## Requirements
+
+- **noctalia 5.0.0** on niri (Wayland)
+- **[Claude Code](https://claude.com/claude-code)** — the agent being visualized. Optional if you're driving the widgets from another agent via [PROTOCOL.md](PROTOCOL.md).
+- **Python 3** for the MCP shim (stdlib only, no pip installs)
+- On the PATH as the shim's senses need them: `niri`, `playerctl`, `nmcli`, `notify-send`
 
 ## Install
 
