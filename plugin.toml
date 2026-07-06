@@ -1,6 +1,6 @@
 # C3P-No — Claude Code Companion (perceive · practice · pulse) for Noctalia v5.
 # Claude + the three P's (Perceive, Practice, Pulse) + the No of Noctalia.
-# NOT a chat client: the terminal does the agentic work; this is the shell-side
+# Not a chat client: the terminal does the agentic work; this is the shell-side
 # body — senses, hands, and an attention pulse. See README.md for the design.
 
 id = "lowcache/c3p-no"
