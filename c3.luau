@@ -132,6 +132,47 @@ local function panel_showing()
   return noctalia.state.get("c3.answer.open") == true
 end
 
+-- ── auth guard ───────────────────────────────────────────────────────────────
+-- Headless `claude -p` does NOT refresh an expired OAuth access token (8 h
+-- lifetime) even when the refresh token is valid — only an interactive session
+-- does (upstream: anthropics/claude-code#53063 and friends). So a quick-ask can
+-- 401 whenever no terminal session has run recently. Two layers, both fail-open:
+-- a pre-flight that skips the launch when the token is positively expired, and
+-- an error-text match that swaps the raw API error for the remedy.
+local AUTH_REMEDY = "Claude login expired — start a Claude session in a terminal to refresh it, then re-ask."
+
+local CREDS_PATH = "~/.claude/.credentials.json"
+
+-- true ONLY when the credentials file positively says the token is expired.
+-- Missing file, undecodable JSON, absent expiresAt, or no epoch clock all mean
+-- "unknown" → proceed and let the error match below catch a real failure. The
+-- token itself is never read, only the expiry timestamp.
+-- [CEILING]: %s is a glibc strftime extension; if noctalia's formatTime doesn't
+-- pass it through, tonumber yields nil and the pre-flight silently disables —
+-- the detect layer still covers, upgrade by asking upstream for an epoch API.
+local function token_expired()
+  local now = tonumber(noctalia.formatTime("%s"))
+  if not now then return false end
+  local raw = noctalia.readFile(noctalia.expandPath(CREDS_PATH))
+  if type(raw) ~= "string" then return false end
+  local ok, creds = pcall(noctalia.json.decode, raw)
+  if not ok or type(creds) ~= "table" then return false end
+  local oauth = creds.claudeAiOauth
+  local exp = type(oauth) == "table" and tonumber(oauth.expiresAt) or nil
+  if not exp then return false end
+  if exp > 1e12 then exp = exp / 1000 end -- stored in ms; tolerate seconds too
+  return exp <= now + 30 -- 30 s margin: don't start an ask about to 401 mid-flight
+end
+
+-- Recognize the auth-failure shapes claude -p emits in its result line:
+-- "Not logged in · Please run /login" (no credentials) and "Failed to
+-- authenticate. API Error: 401 {...authentication_error...}" (expired token).
+local function is_auth_error(text)
+  return text:find("Please run /login", 1, true) ~= nil
+      or text:find("API Error: 401", 1, true) ~= nil
+      or text:find("authentication_error", 1, true) ~= nil
+end
+
 -- ── context injection ────────────────────────────────────────────────────────
 -- Make /c3-launched sessions desktop-AWARE (senses) and desktop-CAPABLE (hands)
 -- by wiring the noctalia MCP shim and a role note into the launch.
@@ -223,6 +264,14 @@ function onActivate(id)
   end
   local ask = id:match("^ask:(.*)$")
   if ask then
+    -- pre-flight: an expired token would 401 only after burning the request,
+    -- and the remedy needs a terminal anyway — so say so now and skip the
+    -- launch. No c3.state touch: no ask session ever starts.
+    if token_expired() then
+      publish_answer(ask, AUTH_REMEDY, true)
+      if not panel_showing() then noctalia.notifyError("Claude", AUTH_REMEDY) end
+      return
+    end
     set_state(EVENT.turn_start)
     -- Accumulate streamed assistant text; the final `result` event also carries
     -- the full text, so prefer it at turn_end and fall back to the accumulation.
@@ -248,6 +297,9 @@ function onActivate(id)
       elseif ev.kind == EVENT.error then
         local final = (ev.text and ev.text ~= "") and ev.text or acc
         if final == "" then final = "ask failed" end
+        -- a 401 that slipped past the pre-flight: deliver the remedy, not the
+        -- raw API error blob
+        if is_auth_error(final) then final = AUTH_REMEDY end
         publish_answer(ask, final, true)
         if not panel_showing() then
           local body, clipped = preview(final)
