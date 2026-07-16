@@ -1,7 +1,6 @@
-# Backend config — claude only in v1. The seam (one chokepoint in c3.luau) means
+# Backend config — claude only in v1. The seam (one chokepoint in claude.luau) means
 # adding a backend later is a config block + a parse() branch, with no call-site
-# change. This file documents the seam; it is NOT read yet (c3.luau hardcodes claude).
-# [CEILING]: no reader wired — add one only when a second backend actually lands.
+# change. This file documents the seam; it is NOT read yet (claude.luau hardcodes claude).
 
 default_backend = "claude"
 

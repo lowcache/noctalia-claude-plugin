@@ -1,12 +1,12 @@
 #!/usr/bin/env -S nix shell nixpkgs#slurp nixpkgs#wf-recorder nixpkgs#ffmpeg nixpkgs#gifski --command bash
-# demo-capture.sh — one-command region → optimized GIF, for the C3P-No demo.
+# demo-capture.sh — one-command region → optimized GIF, for the Claude Companion demo.
 #
 #   ./scripts/demo-capture.sh                 # → assets/demo.gif
 #   ./scripts/demo-capture.sh my.gif          # → my.gif
 #   FPS=30 WIDTH=1100 ./scripts/demo-capture.sh
 #
 # Flow: drag a box (slurp) over the bar dot + orb (park the orb under the bar
-# first), perform the /c3 ? question→answer arc, press Ctrl-C to stop. Out comes
+# first), perform the /claude ? question→answer arc, press Ctrl-C to stop. Out comes
 # a scaled, quantized GIF via gifski.
 #
 # The shebang provisions slurp/wf-recorder/ffmpeg/gifski through `nix shell`, so

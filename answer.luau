@@ -1,16 +1,16 @@
--- The answer panel — the full-length surface for /c3 ? quick-ask answers.
--- A notification toast clips long bodies and cannot scroll, so c3.luau publishes
--- the complete answer to noctalia.state "c3.answer" and this panel renders it
+-- The answer panel — the full-length surface for /claude ? quick-ask answers.
+-- A notification toast clips long bodies and cannot scroll, so claude.luau publishes
+-- the complete answer to noctalia.state "claude.answer" and this panel renders it
 -- wrapped and scrollable. Ways in: click the bar pulse, the "Show last answer"
--- row under /c3, or `noctalia msg panel-open lowcache/c3p-no:answer`.
+-- row under /claude, or `noctalia msg panel-open lowcache/claude-companion:answer`.
 --
--- Pure subscriber, same doctrine as the orb: c3.luau owns the state, this panel
+-- Pure subscriber, same doctrine as the orb: claude.luau owns the state, this panel
 -- only renders it. state.watch() callbacks proved unreliable for bar widgets
 -- (see pulse.luau) and a panel only lives while open anyway, so this polls on
 -- second ticks and re-renders only when the payload actually changed — an
 -- unconditional re-render each second would reset the scroll position mid-read.
 
-local KEY = "c3.answer"
+local KEY = "claude.answer"
 
 -- The panel surface is 460 logical px wide (plugin.toml); wrap text inside the
 -- padding with room for the scrollbar.
@@ -33,7 +33,7 @@ local function render(a)
   local body
   if type(a) ~= "table" or type(a.text) ~= "string" or a.text == "" then
     body = ui.label({
-      text = "No answers yet. Ask one from the launcher: /c3 ? <question>",
+      text = "No answers yet. Ask one from the launcher: /claude ? <question>",
       maxWidth = WRAP,
       opacity = 0.7,
     })
@@ -58,12 +58,12 @@ local function render(a)
   panel.render(ui.column({ padding = PAD, gap = 8, flexGrow = 1 }, rows))
 end
 
--- Visibility flag for c3.luau: while the panel is open it live-refreshes the
+-- Visibility flag for claude.luau: while the panel is open it live-refreshes the
 -- answer (update below), so a toast for the same answer would be a redundant
 -- second surface — and dismissing that toast clicks outside the panel, which
--- the click-shield turns into closing the panel too. c3.luau reads this flag
+-- the click-shield turns into closing the panel too. claude.luau reads this flag
 -- and skips the toast when the panel is already showing.
-local OPEN_KEY = "c3.answer.open"
+local OPEN_KEY = "claude.answer.open"
 
 function onOpen(_context)
   panel.setWantsSecondTicks(true) -- the host stops ticks on close, re-arms on reopen

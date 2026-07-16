@@ -1,7 +1,7 @@
 # The Pulse Protocol
 
 An agent-agnostic contract for driving the pulse bar widget (and everything
-downstream of it: the presence orb, tooltips, `c3.pulse` subscribers). The
+downstream of it: the presence orb, tooltips, `claude.pulse` subscribers). The
 widget knows nothing about Claude Code — it consumes **events** and an optional
 **telemetry payload** over noctalia's plugin IPC. Any coding agent that can run
 a shell command on its lifecycle hooks (gemini-cli, codex, opencode, aider, a
@@ -21,7 +21,7 @@ noctalia msg plugin <target> all <event> [payload]
 ```
 
 - `<target>` is the plugin dispatch id: `<plugin-id>:<widget-entry>` —
-  `lowcache/c3p-no:pulse` for this install. Adapters must treat it as
+  `lowcache/claude-companion:pulse` for this install. Adapters must treat it as
   configurable (`pulse-emit` reads `$PULSE_TARGET`).
 - `all` addresses every monitor's widget instance. (`focused` or a bare
   connector errors when the widget sits on multiple bars.)
@@ -136,12 +136,12 @@ pulse-emit session_end mysess                # retire the slot
 long_build && pulse-emit needs_attention ci  # non-agent uses work too
 ```
 
-## Downstream: the `c3.pulse` state mirror
+## Downstream: the `claude.pulse` state mirror
 
 The widget is the **single aggregator**; subscribers (the orb, or any future
 surface) never parse events themselves. On every event — never from the
 animation timer — it publishes a rollup snapshot to noctalia shared state under
-`c3.pulse`:
+`claude.pulse`:
 
 ```lua
 { state = <most-urgent event name>,   -- "idle" when no sessions
@@ -152,7 +152,7 @@ animation timer — it publishes a rollup snapshot to noctalia shared state unde
   cr    = <cacheRead; 0 when count > 1> }
 ```
 
-Desktop widgets receive it via `noctalia.state.watch("c3.pulse", cb)`; bar
+Desktop widgets receive it via `noctalia.state.watch("claude.pulse", cb)`; bar
 widgets must poll `state.get` (watch doesn't fire on bars in noctalia 5.0.0).
 
 ## Deployment invariant
@@ -160,5 +160,4 @@ widgets must poll `state.get` (watch doesn't fire on bars in noctalia 5.0.0).
 The aggregator lives in the `pulse` **bar widget** — bar widgets only run when
 placed on a bar. If `pulse` isn't in a bar layout, every event is silently
 dropped and all subscribers freeze. Noctalia 5.0.0 has no headless plugin
-entry kind. [CEILING]: upstream ask for a `[[service]]`/background entry kind;
-until then "pulse on a bar" is a hard install requirement.
+entry kind, so "pulse on a bar" is a hard install requirement.

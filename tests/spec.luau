@@ -1,5 +1,5 @@
 -- Spec — drives pulse.luau through its public surface: the global onIpc (hook
--- reflex, per-session, with the CSV payload) and the captured c3.state callback
+-- reflex, per-session, with the CSV payload) and the captured claude.state callback
 -- (__watch_cb, the quick-ask path). Concatenated AFTER pulse.luau, so onIpc,
 -- __watch_cb, and the recorded __tt/__glyph are in scope. opus token figures are
 -- the tether-cross-checked totals (in 45129, cc 202412 → 247541 displayed).
@@ -38,7 +38,7 @@ expect("needs_attention → bell-ringing glyph", __glyph, "bell-ringing")
 expect("needs_attention uses error accent", __color, "#FF4D1F")
 contains("needs_attention tooltip lists beta", __tt, "beta · needs you · haiku-4-5 1.2k/340")
 
--- Quick-ask (c3.state path) joins as an ephemeral, telemetry-less session.
+-- Quick-ask (claude.state path) joins as an ephemeral, telemetry-less session.
 __watch_cb("turn_start")
 contains("ask adds a session", __tt, "Claude — 3 sessions")
 contains("ask shown without burn", __tt, "ask · thinking")

@@ -13,10 +13,10 @@ barWidget = {
   setTooltip = function(t) __tt = t end,
 }
 
--- watch() is invoked at load with ("c3.state", callback); capture the callback
+-- watch() is invoked at load with ("claude.state", callback); capture the callback
 -- so the spec can drive the quick-ask path the same way noctalia.state.set would.
 -- set() records the last published snapshot per key (__state) so a spec can assert
--- on what the bar pulse mirrors to the presence orb ("c3.pulse").
+-- on what the bar pulse mirrors to the presence orb ("claude.pulse").
 __watch_cb = nil
 __state = {}
 noctalia = {

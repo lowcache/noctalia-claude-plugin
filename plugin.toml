@@ -1,10 +1,9 @@
-# C3P-No — Claude Code Companion (perceive · practice · pulse) for Noctalia v5.
-# Claude + the three P's (Perceive, Practice, Pulse) + the No of Noctalia.
+# Claude Companion — a Claude Code companion for Noctalia v5.
 # Not a chat client: the terminal does the agentic work; this is the shell-side
 # body — senses, hands, and an attention pulse. See README.md for the design.
 
-id = "lowcache/c3p-no"
-name = "C3P-No — Claude Code Companion"
+id = "lowcache/claude-companion"
+name = "Claude Companion"
 version = "1.0.0"
 # Prereqs (the [[panel]] kind, ui controls, plugin IPC dispatch, the barWidget/onIpc
 # surface) shipped in the 5.0.0 build running here (flake input rev 623210223c).
@@ -13,11 +12,15 @@ min_noctalia = "5.0.0"
 author = "lowcache"
 license = "MIT"
 icon = "robot"
-description = "Claude Code companion: /c3 launch + a telemetry-driven attention pulse."
-tags = ["ai", "claude", "productivity"]
+description = "Claude Code companion: /claude launch + a telemetry-driven attention pulse."
+# The compositor CLI (niri / hyprctl / swaymsg) is not listed: the shim detects and
+# speaks whichever of the three supported compositors is running Noctalia, so exactly
+# one is inherently present. See README "Requirements".
+dependencies = ["claude", "python3", "playerctl", "notify-send", "nmcli"]
+tags = ["ai", "productivity", "bar", "desktop", "panel", "launcher"]
 
 # The attention pulse — the visual centerpiece. Reads agent state from
-# noctalia.state ("c3.state") and from hook signals (onIpc), reflects it in the
+# noctalia.state ("claude.state") and from hook signals (onIpc), reflects it in the
 # bar as a glyph + a sine-breath brightness glow (folded in from the barpulse
 # A/B prototype; barpulse.luau stays in-repo as the experiment record, unregistered).
 [[widget]]
@@ -25,27 +28,27 @@ id = "pulse"
 entry = "pulse.luau"
 
 # The presence orb — the ambient desktop half of the pulse. A softly breathing disc
-# that mirrors the bar dot's rollup (published to noctalia.state "c3.pulse"); pure
+# that mirrors the bar dot's rollup (published to noctalia.state "claude.pulse"); pure
 # view, no hooks of its own. Per-frame motion via setNeedsFrameTick/onFrameTick.
 [[desktop_widget]]
 id = "orb"
 entry = "orb.luau"
 
-# The answer panel — full-length scrollable surface for /c3 ? quick-ask answers
+# The answer panel — full-length scrollable surface for /claude ? quick-ask answers
 # (a notification toast clips long bodies; it carries only a preview). Opens on
 # a click on the bar pulse, from the "Show last answer" launcher row, or via
-# `noctalia msg panel-open lowcache/c3p-no:answer`.
+# `noctalia msg panel-toggle lowcache/claude-companion:answer`.
 [[panel]]
 id = "answer"
 entry = "answer.luau"
 width = 460
 height = 420
 
-# /c3 — launch a real Claude Code session in the terminal, or a one-shot ask.
+# /claude — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
 # module system, and this is the only entry that talks to a model.
 [[launcher_provider]]
-id = "c3"
-entry = "c3.luau"
-prefix = "/c3"
+id = "claude"
+entry = "claude.luau"
+prefix = "claude"
 glyph = "robot"

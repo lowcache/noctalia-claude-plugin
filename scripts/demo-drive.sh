@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # demo-drive.sh — animate the pulse bar dot + desktop orb through a full Claude
-# lifecycle arc, at recording pace, for the C3P-No demo GIF.
+# lifecycle arc, at recording pace, for the Claude Companion demo GIF.
 #
 #   ./scripts/demo-drive.sh            # one arc, ~3s lead-in, then idle→…→done→needs-you
 #   HOLD=1.8 ./scripts/demo-drive.sh   # faster (seconds each state is held)
@@ -8,18 +8,18 @@
 #   LEAD=5  ./scripts/demo-drive.sh    # longer countdown before the arc starts
 #
 # Why this exists: the bar dot's glyph/color/breath and the desktop orb are both
-# driven by pulse events. The orb subscribes to the "c3.pulse" shared state that
+# driven by pulse events. The orb subscribes to the "claude.pulse" shared state that
 # the bar republishes on every event, so ONE stream of pokes moves both surfaces.
 # Each poke carries a real-looking CSV payload (fixed session id + climbing token
 # burn) so the tooltip + orb telemetry read as a live session, not a bare test.
 #
-#   noctalia msg plugin lowcache/c3p-no:pulse all <event> <model,in,out,cc,cr,sid>
+#   noctalia msg plugin lowcache/claude-companion:pulse all <event> <model,in,out,cc,cr,sid>
 #
-# Do the `/c3 ? …` question→answer arc yourself (that drives its own state); run
+# Do the `/claude ? …` question→answer arc yourself (that drives its own state); run
 # this to make the ambient widgets breathe through their states for the capture.
 set -euo pipefail
 
-PLUGIN="lowcache/c3p-no:pulse"
+PLUGIN="lowcache/claude-companion:pulse"
 SID="${SID:-demo}"
 MODEL="${MODEL:-opus-4-8}"
 HOLD="${HOLD:-2.4}"     # seconds each state is held (breath is visible within this)

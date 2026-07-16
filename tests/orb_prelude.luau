@@ -39,7 +39,7 @@ function find(node, t)
 end
 
 -- Capture each state.watch callback by key so the spec can push snapshots the way
--- the bar pulse's noctalia.state.set("c3.pulse", …) would.
+-- the bar pulse's noctalia.state.set("claude.pulse", …) would.
 __watch = {}
 noctalia = {
   state = {

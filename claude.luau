@@ -1,12 +1,11 @@
--- /c3 — the hands: launch Claude Code, or a quick one-shot ask.
---   /c3 <task>   → real Claude Code TUI in the terminal (full fidelity)
---   /c3          → resume last session (claude --continue)
---   /c3 ? <q>    → one-shot read-only ask, streamed; answer via notify
+-- /claude — the hands: launch Claude Code, or a quick one-shot ask.
+--   /claude <task>   → real Claude Code TUI in the terminal (full fidelity)
+--   /claude          → resume last session (claude --continue)
+--   /claude ? <q>    → one-shot read-only ask, streamed; answer via notify
 --
 -- Holds the BACKEND CHOKEPOINT (invoke + parse). v5 plugins load each entry as a
--- single chunk (no module system), and cc is the only entry that talks to a model,
--- so the seam lives here, inlined. [CEILING]: single-file inline; if a second entry
--- ever needs the backend, add a cat-concat deploy step rather than duplicating.
+-- single chunk (no module system), and this launcher is the only entry that talks to a model,
+-- so the seam lives here, inlined.
 
 -- noctalia.runInTerminal / runStream both exec via `/bin/sh -c <string>`, so every
 -- interpolated value must be shell-quoted. Single-quote wrap + escape embedded
@@ -30,9 +29,9 @@ local EVENT = {
 
 -- noctalia launches us with the GUI-session PATH, which lacks ~/.local/bin (it's
 -- added by the user's shell profile, not the graphical session). Claude Code's
--- own session hooks live there (memd, agent-scaffold, …), so a /c3 session would
+-- own session hooks live there (memd, agent-scaffold, …), so a /claude session would
 -- hit "command not found" that a terminal-started one never does. Prepend it to
--- every launch so a /c3 session inherits the same PATH as a terminal. Fixed,
+-- every launch so a /claude session inherits the same PATH as a terminal. Fixed,
 -- trusted literal — $HOME/$PATH are meant to expand in the `/bin/sh -c` context.
 local PATH_PREFIX = 'PATH="$HOME/.local/bin:$PATH" '
 
@@ -46,8 +45,7 @@ local ASK_NOTE = table.concat({
   "Plain text only — no markdown formatting.",
 }, " ")
 
--- claude only. [CEILING]: no registry — add a backends table + a second parse()
--- branch when ollama/router lands; this is the seam, zero call-site change needed.
+-- claude only; this is the single backend seam.
 local function backend_command(prompt)
   -- Claude Code: -p (print/non-interactive) requires --verbose for stream-json.
   return PATH_PREFIX .. "claude --output-format stream-json --verbose"
@@ -58,7 +56,7 @@ end
 -- line: type "system" (init), "assistant" (a message; content is an array of
 -- text / tool_use blocks), "user" (tool_result), "result" (final). We map the
 -- subset we care about and ignore the rest (version-defensive).
--- [CEILING]: the content-block shape can shift across claude versions — if events
+-- Note: the content-block shape can shift across claude versions — if events
 -- stop firing, re-dump a live stream and re-check the field names here.
 local function parse(line)
   local ok, msg = pcall(noctalia.json.decode, line)
@@ -92,19 +90,19 @@ local function parse(line)
 end
 
 -- publish quick-ask state for the pulse widget (cross-VM channel via shared
--- state). Only the hookless `/c3 ? <q>` stream uses this; the widget tracks it as
+-- state). Only the hookless `/claude ? <q>` stream uses this; the widget tracks it as
 -- one ephemeral "ask" session and drops it when the ask ends.
-local function set_state(s) noctalia.state.set("c3.state", s) end
+local function set_state(s) noctalia.state.set("claude.state", s) end
 
 -- ── answer delivery ──────────────────────────────────────────────────────────
 -- A toast clips long bodies with no scroll, so it is the preview surface only:
--- the complete answer is published to "c3.answer" and rendered wrapped +
+-- the complete answer is published to "claude.answer" and rendered wrapped +
 -- scrollable by the answer panel (answer.luau). The panel opens from a click on
 -- the bar pulse, the "Show last answer" launcher row, or the CLI.
-local ANSWER_PANEL = "lowcache/c3p-no:answer"
+local ANSWER_PANEL = "lowcache/claude-companion:answer"
 
 local function publish_answer(q, text, is_err)
-  noctalia.state.set("c3.answer", {
+  noctalia.state.set("claude.answer", {
     q = q,
     text = text,
     error = is_err == true,
@@ -124,12 +122,12 @@ local function preview(text)
 end
 
 -- ONE surface per answer: while the answer panel is open (it sets this flag) it
--- live-refreshes from c3.answer, so it IS the delivery — a toast on top would
+-- live-refreshes from claude.answer, so it IS the delivery — a toast on top would
 -- duplicate it, and dismissing that toast clicks outside the panel, which the
 -- click-shield turns into closing the panel as well (verified live: toast +
 -- panel died to one click). Panel open → publish only; panel closed → toast.
 local function panel_showing()
-  return noctalia.state.get("c3.answer.open") == true
+  return noctalia.state.get("claude.answer.open") == true
 end
 
 -- ── auth guard ───────────────────────────────────────────────────────────────
@@ -147,9 +145,9 @@ local CREDS_PATH = "~/.claude/.credentials.json"
 -- Missing file, undecodable JSON, absent expiresAt, or no epoch clock all mean
 -- "unknown" → proceed and let the error match below catch a real failure. The
 -- token itself is never read, only the expiry timestamp.
--- [CEILING]: %s is a glibc strftime extension; if noctalia's formatTime doesn't
+-- Note: %s is a glibc strftime extension; if noctalia's formatTime doesn't
 -- pass it through, tonumber yields nil and the pre-flight silently disables —
--- the detect layer still covers, upgrade by asking upstream for an epoch API.
+-- the detect layer still covers.
 local function token_expired()
   local now = tonumber(noctalia.formatTime("%s"))
   if not now then return false end
@@ -174,26 +172,25 @@ local function is_auth_error(text)
 end
 
 -- ── context injection ────────────────────────────────────────────────────────
--- Make /c3-launched sessions desktop-AWARE (senses) and desktop-CAPABLE (hands)
+-- Make /claude-launched sessions desktop-AWARE (senses) and desktop-CAPABLE (hands)
 -- by wiring the noctalia MCP shim and a role note into the launch.
 --
 -- We pass the shim via inline --mcp-config (not a file) so the terminal's cwd is
--- irrelevant: /c3 opens in the user's project dir, not the plugin dir. We push a
+-- irrelevant: /claude opens in the user's project dir, not the plugin dir. We push a
 -- role note, NOT a senses snapshot — a snapshot taken at launch is stale before
 -- the first turn; instead Claude pulls fresh senses on demand via the tools.
--- [CEILING]: shim assumed at the canonical install path
--- ($HOME/.local/share/noctalia/plugins/<id>); if noctalia exposes a plugin-dir to
--- luau, derive the path from that instead. $HOME stays bare for the shell to
+-- The shim is assumed at the canonical install path
+-- ($HOME/.local/share/noctalia/plugins/<id>). $HOME stays bare for the shell to
 -- expand (portable; nothing user-specific is committed). The JSON is fixed and
 -- trusted (no user input), so dq() is injection-safe here.
-local SHIM = "$HOME/.local/share/noctalia/plugins/c3p-no/shim/noctalia-mcp.py"
+local SHIM = "$HOME/.local/share/noctalia/plugins/claude-companion/shim/noctalia-mcp.py"
 local MCP_JSON = '{"mcpServers":{"noctalia":{"command":"python3","args":["' .. SHIM .. '"]}}}'
 
 local SYSTEM_NOTE = table.concat({
-  "You are running inside the Noctalia desktop shell (niri/Wayland), launched from its Claude Code companion plugin.",
+  "You are running inside the Noctalia desktop shell (Wayland — niri, Hyprland, or Sway), launched from its Claude Code companion plugin.",
   "An MCP server named 'noctalia' gives you live desktop senses and hands:",
   "PERCEIVE — get_window (focused app/title), get_workspace (focused output + workspace), get_media (now playing), get_shell_state (shell status), get_power (battery/AC), get_network (connectivity/Wi-Fi), get_processes (top by CPU).",
-  "ACT — notify (desktop toast), set_theme_mode (dark/light/auto), set_color_scheme, focus_window (by niri id), switch_workspace (by index/name), move_to_workspace (move focused column), set_wallpaper (path or random).",
+  "ACT — notify (desktop toast), set_theme_mode (dark/light/auto), set_color_scheme, focus_window (by the id from get_window), switch_workspace (by index/name), move_to_workspace (move focused window), set_wallpaper (path or random).",
   "MEMORY — remember (persist a durable fact for future sessions).",
   "Call the perceive tools when current desktop context matters instead of assuming it, and use notify for ambient status updates.",
 }, " ")
@@ -202,13 +199,13 @@ local SYSTEM_NOTE = table.concat({
 local CONTEXT_FLAGS =
   "--mcp-config " .. dq(MCP_JSON) .. " --append-system-prompt " .. shq(SYSTEM_NOTE)
 
--- ── /c3 routing ──────────────────────────────────────────────────────────────
+-- ── /claude routing ──────────────────────────────────────────────────────────────
 local function trim(s) return (s:gsub("^%s+", ""):gsub("%s+$", "")) end
 
 -- The last quick-ask answer, if any, earns a launcher row that reopens the
 -- answer panel — the recovery path when the toast has already expired.
 local function answer_row()
-  local a = noctalia.state.get("c3.answer")
+  local a = noctalia.state.get("claude.answer")
   if type(a) ~= "table" or type(a.text) ~= "string" or a.text == "" then return nil end
   return { id = "answer", title = "Show last answer", subtitle = a.q, glyph = "message-2" }
 end
@@ -245,9 +242,9 @@ end
 
 function onActivate(id)
   -- A launched TUI session drives the pulse itself via the global Claude Code
-  -- hooks (with its own session id + token telemetry), so we DON'T set c3.state
+  -- hooks (with its own session id + token telemetry), so we DON'T set claude.state
   -- here — doing so would register a phantom session the hooks never update or
-  -- retire. c3.state is only for the hookless quick-ask stream below.
+  -- retire. claude.state is only for the hookless quick-ask stream below.
   if id == "continue" then
     noctalia.runInTerminal(PATH_PREFIX .. "claude " .. CONTEXT_FLAGS .. " --continue")
     return
@@ -266,7 +263,7 @@ function onActivate(id)
   if ask then
     -- pre-flight: an expired token would 401 only after burning the request,
     -- and the remedy needs a terminal anyway — so say so now and skip the
-    -- launch. No c3.state touch: no ask session ever starts.
+    -- launch. No claude.state touch: no ask session ever starts.
     if token_expired() then
       publish_answer(ask, AUTH_REMEDY, true)
       if not panel_showing() then noctalia.notifyError("Claude", AUTH_REMEDY) end

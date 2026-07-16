@@ -4,7 +4,7 @@
 -- at idle, quick and insistent when Claude needs you.
 --
 -- It is a pure VIEW. pulse.luau already rolls all sessions up for the bar dot and
--- now mirrors that rollup into noctalia.state ("c3.pulse"); the orb just subscribes
+-- now mirrors that rollup into noctalia.state ("claude.pulse"); the orb just subscribes
 -- and animates. No hook, IPC, or session bookkeeping lives here — one source of
 -- truth (the bar pulse), two surfaces (bar dot + desktop orb).
 --
@@ -117,7 +117,7 @@ end
 
 -- New status from the bar pulse. We don't reset `phase` on state change — the
 -- breath glides into the new tempo instead of snapping, which reads calmer.
-noctalia.state.watch("c3.pulse", function(snap)
+noctalia.state.watch("claude.pulse", function(snap)
   if type(snap) ~= "table" then return end
   cur.state = (type(snap.state) == "string" and VISUAL[snap.state]) and snap.state or "idle"
   cur.count = tonumber(snap.count) or 0

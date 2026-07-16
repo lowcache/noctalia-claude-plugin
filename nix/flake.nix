@@ -1,5 +1,5 @@
 {
-  description = "luau dev/test toolchain for the C3P-No (noctalia Claude Code companion) plugin widgets (pulse.luau, orb.luau)";
+  description = "luau dev/test toolchain for the Claude Companion (noctalia Claude Code companion) plugin widgets (pulse.luau, orb.luau)";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
@@ -66,12 +66,16 @@
         pkgs:
         pkgs.writeShellApplication {
           name = "widget-test";
-          runtimeInputs = [ pkgs.luau ];
+          runtimeInputs = [
+            pkgs.luau
+            pkgs.python3
+          ];
           text = ''
             root="''${1:-$PWD}"
             echo "── pulse ──";  "${pulseRunner pkgs}/bin/pulse-test" "$root"
             echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
             echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
+            echo "── shim (compositor abstraction) ──"; python3 "$root/tests/shim_spec.py"
           '';
         };
     in

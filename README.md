@@ -1,137 +1,174 @@
-<p align="center">
-  <img src="assets/c3p-no-thumbnail.webp" alt="C3P-No — a Claude Code companion for Noctalia: pulse, orb, and answer panel" width="760">
-</p>
-
-## Claude Code Companion for Noctalia v5 - C3P-No 
-
-> **C**laude · **P**erceive · **P**ractice · **P**ulse · **No**ctalia → C3P-No
-
-![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet) ![specs](https://img.shields.io/badge/specs-84%20passing-brightgreen)
-
-**What it is:** a noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
-**Who it's for:** you run Claude Code (Anthropic's terminal AI agent) on a noctalia desktop. Don't run Claude Code? The signal bus is agent-agnostic — see [Wiring up other agents](#wiring-up-other-agents).
-
-Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
-
-This plugin gives it a body. It wires noctalia into Claude's lifecycle so a **pulse** on your bar tracks every session, an **orb** on your desktop breathes along with the work, and an **answer panel** catches one-shot replies before they scroll away. The terminal keeps doing the actual thinking — permissions, tools, MCP, all native. This is just the nervous system that lets the rest of your desktop feel it.
-
-Built and live-tested against noctalia 5.0.0 (flake input `623210223c`), with 84 offline widget checks to keep the state machine honest.
-
----
-
-## See it
+# Community plugins
 
 <p align="center">
-  <img src="assets/pulse.gif" alt="The bar pulse and desktop orb breathing through a Claude session's lifecycle" width="380"><br>
-  <em>One session, start to finish: the <strong>pulse</strong> on the bar and the <strong>orb</strong> on the desktop breathe through idle, thinking, a tool run, done, and needs-you.</em>
-</p>
-
-<p align="center">
-  <img src="assets/question.gif" alt="/c3 ? question answered in the answer panel" width="760"><br>
-  <em>Ask something quick with <code>/c3 ?</code> and the whole answer waits for you in the panel, instead of scrolling off the top of the terminal.</em>
+  <img src="https://assets.noctalia.dev/noctalia-logo.svg?v=2" alt="Noctalia Logo" style="width: 192px" />
 </p>
 
 ---
 
-## The three P's of C3P-No
+This repo is the **community** plugin source for [Noctalia](https://github.com/noctalia-dev/noctalia). Every
+plugin merged here is listed in the shell's plugin store and on
+[noctalia.dev/plugins](https://noctalia.dev/plugins), and users can install it without adding a source of their own.
 
-**Perceive.** `shim/noctalia-mcp.py` is a stdio MCP shim that hands Claude a live read on your machine: `niri msg -j` for the windows you have open, `playerctl` for what's playing, `noctalia msg status` for the state of the shell itself. Nothing to wire up by hand. Launch through `/c3` and it attaches itself.
+Plugins maintained by the core team live in
+[official-plugins](https://github.com/noctalia-dev/official-plugins), which does not accept third-party plugins.
+This one does. **PRs are welcome.**
 
-**Practice.** Everything on the backend funnels through `c3.luau`, the `/c3` launcher and the one door in. It normalizes the event vocabulary, throws `notify-send` toasts, and calls `noctalia msg` to move panels around. One chokepoint on purpose — so when something acts up, there's exactly one place to go look.
+> The plugin system is in **beta**. The manifest format and the plugin API may still change before v5 is stable.
+> Expect to bump your plugin when they do.
 
-**Pulse.** `pulse.luau` sits on your bar and runs the show. Hook events land here over IPC, and from there it does the rest: tracks every session at once, surfaces whichever one's most urgent, breathes in your accent color, and mirrors the rollup into `noctalia.state` under `c3.pulse` for anyone downstream to read.
+## Layout
 
-And downstream is where the quiet parts live. `orb.luau` is pure view. It subscribes to `c3.pulse` and breathes the same state frame by frame, glyph and opacity riding a sine wave, tempo picking up as things get urgent — no hooks, no logic of its own, just a reflection. `answer.luau` is the `[[panel]]` that catches a `/c3 ?` reply and holds the whole thing: wrapped, scrollable, all the parts a toast lops off the end.
+Each plugin is **one top-level directory**, named after the part of its id that follows the `/`, so `me/hello` lives
+in `hello/`:
 
----
-
-## Requirements
-
-- **noctalia 5.0.0** on niri (Wayland)
-- **[Claude Code](https://claude.com/claude-code)** — the agent being visualized. Optional if you're driving the widgets from another agent via [PROTOCOL.md](PROTOCOL.md).
-- **Python 3** for the MCP shim (stdlib only, no pip installs)
-- On the PATH as the shim's senses need them: `niri`, `playerctl`, `nmcli`, `notify-send`
-
-## Install
-
-```sh
-# clone and symlink into the plugins dir
-ln -s "$PWD" ~/.local/share/noctalia/plugins/c3p-no
-
-# enable the plugin
-noctalia msg plugins enable lowcache/c3p-no
+```
+hello/
+  plugin.toml             # manifest: id ("me/hello"), metadata, entries, settings
+  hello.luau              # your entry scripts
+  README.md               # rendered as the plugin's page on noctalia.dev
+  thumbnail.webp          # the plugin's card image
+  translations/
+    en.json               # every label_key / description_key the manifest references
 ```
 
-Then, in order:
+`catalog.toml` at the repo root indexes every plugin. **It is generated by CI, so never edit it or include it in a
+commit.**
 
-1. **Put the `pulse` widget on a bar** (Settings → Bar). Read the warning below first — this one isn't optional.
-2. Add the `orb` desktop widget if you want the ambient presence.
-3. Merge `hooks/settings.snippet.json` into `~/.claude/settings.json` so Claude's lifecycle hooks actually drive the pulse.
-4. Point Claude at `shim/noctalia-mcp.py` with `--mcp-config` to hand it the senses and hands. (Sessions you launch through `/c3` do this for you.)
+A plugin id is `<author>/<plugin>`. The author part is yours (your GitHub handle is the obvious choice) and keeps your
+id distinct from everyone else's, but the **directory name is first-come within this repo**. If `weather/` is already
+taken, pick another name; the official repo is a separate source, so a name used there is not taken here. Both id
+segments must be lowercase and match `[a-z0-9][a-z0-9._-]*`.
 
-Prove it works:
+## What a plugin is allowed to be
 
-```sh
-noctalia msg plugin lowcache/c3p-no:pulse all needs_attention   # bar icon → red bell
-noctalia msg plugin lowcache/c3p-no:pulse all idle              # back to robot
-```
+Noctalia plugins are **trusted, unsandboxed Luau**. There is no permission broker and no capability sandbox:
+installing a plugin is equivalent to running a script the user owns. It can read and write files, spawn processes, and
+talk to the network as the user.
 
-> [!WARNING]
-> **`pulse` has to stay on a bar.** It's the sole aggregator — the one piece that hears the hooks and publishes the state everything else reads. Noctalia only runs bar widgets while they're placed on a bar, so the moment you pull `pulse` off, the plugin goes dark. The hooks keep firing into the void, the orb freezes on its last breath, and IPC pokes do nothing. If that happens, the fix is always the same: put `pulse` back on a bar.
+That is a deliberate design choice, and it puts the burden on review. So:
 
----
+- **No obfuscated, minified, or generated code.** A reviewer must be able to read every line you ship.
+- **No downloading and executing remote code.** Ship your logic in the repo, at a version people reviewed.
+- **Declare what you shell out to.** External commands go in `dependencies` in `plugin.toml` and get a mention in your
+  README.
+- **Account for every network call, filesystem write, and spawned process** in your PR description.
 
-## Living with it
+Anything that looks like it is hiding what it does will be rejected, regardless of intent.
 
-`/c3 <task>` opens a real Claude Code session in your terminal, shim already wired in. Bare `/c3` picks up where you left off (`claude --continue`). And `/c3 ? <question>` is the quick one — a read-only ask that comes back as a toast and lands, in full, in the answer panel.
+## Writing a plugin
 
-That panel opens however you like it: click the pulse, use the "Show last answer" row under `/c3`, or run `noctalia msg panel-open lowcache/c3p-no:answer`. Leave it open and it refreshes live while suppressing the toast, so you're never reading the same answer twice. A click outside or Esc puts it away.
+The [plugin development docs](https://docs.noctalia.dev/v5/plugins/development/) are the reference: the
+[manifest](https://docs.noctalia.dev/v5/plugins/development/manifest/), the
+[entry types](https://docs.noctalia.dev/v5/plugins/development/entries/) (`[[widget]]`, `[[panel]]`, `[[shortcut]]`,
+`[[service]]`, `[[desktop_widget]]`, `[[launcher_provider]]`), the
+[declarative UI](https://docs.noctalia.dev/v5/plugins/development/declarative-ui/) vocabulary, the
+[runtime API](https://docs.noctalia.dev/v5/plugins/development/runtime-api/), and the
+[workflow](https://docs.noctalia.dev/v5/plugins/development/workflow/) for developing and testing locally.
 
-Hover the bar and the tooltip tells you where each session stands and what it's burning — input, output, cache reads. Run a few at once and you get a line per session plus a Σ total, with the icon always showing whichever one needs you most.
+The fastest start is to read
+[`noctalia/example`](https://github.com/noctalia-dev/official-plugins/tree/main/example) in the official repo. It
+exercises a bar widget, a declarative widget, a service, a shortcut, a launcher provider, and a panel in one plugin.
 
----
-
-## Wiring up other agents
-
-None of this is Claude-specific under the hood. The pulse speaks a plain event format and doesn't care who's talking — any agent, CI job, or shell script that can run a command on its own lifecycle can light up the same bar. [PROTOCOL.md](PROTOCOL.md) has the full eight-event vocabulary, the CSV payload, session semantics, and the adapter contract. The reference emitter, `hooks/pulse-emit`, is plain POSIX sh and needs nothing but `noctalia` on your PATH:
-
-```sh
-hooks/pulse-emit turn_start mysess
-hooks/pulse-emit turn_end mysess gpt-5 12000 800
-hooks/pulse-emit session_end mysess
-```
-
----
-
-## Rough edges
-
-A few things worth knowing before they surprise you:
-
-- Plugin panels render at `Layer::Top`, so an overlay window — a notification, a quake terminal, a polkit prompt — can sit on top of the answer panel. The answer's still there; clear the overlay and you'll see it. There's an upstream ask in for panel layer control.
-- Bar widgets don't fire `state.watch` callbacks in noctalia 5.0.0, so the plugin polls instead. Eight-digit hex alpha is ignored too — brightness is done by scaling RGB.
-- Builtin and wallpaper-generated palettes have no on-disk JSON, so those fall back to fixed accent colors. Custom and community palettes are followed live, rechecked every ~8 s.
-- Quick-ask rides headless `claude -p`, which doesn't refresh an expired OAuth login token — only an interactive session does ([upstream](https://github.com/anthropics/claude-code/issues/53063)). The plugin checks the token's expiry before launching and, instead of burning the request on a guaranteed 401, tells you to open a terminal Claude session first; a failure it couldn't predict gets the same message in place of the raw API error.
-- The MCP shim is a Python prototype. A compiled port is the intended endgame.
-- The shim's memory tool drops notes into `~/.memory/inbox` for the memd curator to pick up. No memd, no reader — the files get written and simply sit there. It follows memd's Inbox Protocol v1.0 (`INBOX-PROTOCOL.md` in the memd repo).
-
----
-
-## Development
-
-`nix/` is a self-contained luau toolchain for exercising the widget logic offline — no noctalia reload to catch a regression in the state machine, the token-burn tooltip, the orb's breath math, or the answer panel's render guard.
+To run your plugin while you work on it, add this checkout as a `path` source:
 
 ```sh
-nix run ./nix#test      # every widget suite
-nix run ./nix#pulse     # bar widget only
-nix run ./nix#orb       # presence orb only
-nix run ./nix#answer    # answer panel only
-nix develop ./nix       # shell with luau
+noctalia msg plugins source add dev path ~/dev/community-plugins
+noctalia msg plugins enable me/hello
 ```
 
-Each runner stitches together a stub prelude (the `barWidget` / `desktopWidget` / `ui` / `noctalia` API surface), the real widget source, and its spec, then runs the whole thing under `luau` and asserts on what the stubs recorded. The specs test the shipping source, not a copy of it — 84 checks in all: 38 on pulse, 26 on orb, 20 on the answer panel.
+`.luau` edits hot-reload; manifest changes are picked up on the next config reload.
 
----
+### Editor setup
 
-## License
+`noctalia.d.luau` declares the whole plugin API, so luau-lsp gives you autocomplete and typo diagnostics. It lives in
+official-plugins, which is its single source of truth; it is **not** vendored here, because a committed copy would be a
+second one for everyone to trust and keep in sync. Fetch it into the repo root, where it is gitignored:
 
-MIT — see [LICENSE](LICENSE).
+```sh
+curl -O https://raw.githubusercontent.com/noctalia-dev/official-plugins/main/noctalia.d.luau
+```
+
+Re-run that whenever the plugin API changes; your local copy is a snapshot, not a subscription.
+
+The committed `.vscode/settings.json` already points luau-lsp at it; for another editor, add it to luau-lsp's
+`types.definitionFiles`. `.luaurc` sets `nonstrict` mode, matching the `--!nonstrict` directive every plugin file
+starts with.
+
+### Thumbnail
+
+Every plugin ships a `thumbnail.webp`. It is the card image in the plugin store and on the website. Generate one with
+the **[thumbnail generator](https://assets.noctalia.dev/plugins/thumbnail-generator.html)**: drop in a screenshot of
+your plugin, set the title, category tag and accent color, then export the 960×540 WebP and commit it as
+`<plugin>/thumbnail.webp`.
+
+### README
+
+`README.md` is the plugin's public page, so it must tell a user how to access every entry instead of only describing
+the implementation. Follow [`README_TEMPLATE.md`](README_TEMPLATE.md), which mirrors the structure used by the
+official plugins:
+
+- Start with a title, a short explanation, a `Plugin` table, and practical `Usage` instructions.
+- Copy the plugin id and every entry id exactly from `plugin.toml`.
+- If the plugin declares a panel, include the exact command
+  `noctalia msg panel-toggle <author>/<plugin>:<panel-id>`.
+- If it declares a launcher provider, document its `/<prefix>` and give an example query.
+- Mention every manifest dependency under `Requirements`, using the exact dependency name.
+- Document declared settings, including units or non-obvious effects.
+- Use `IPC` and `Notes` when the plugin exposes extra events or has important filesystem, network, process, privacy,
+  hardware, or compositor behavior.
+
+CI derives ids, panel commands, launcher prefixes, dependencies, and whether settings exist from `plugin.toml`. Its
+error messages show the exact missing value, while maintainers review the usefulness and accuracy of the prose.
+
+### Translations
+
+Write `translations/en.json` only. Every `label_key` and `description_key` in your manifest must resolve to a key in
+it, and CI checks this. Do not add machine-translated locales; other languages are handled separately.
+
+### Tags
+
+The `tags` in `plugin.toml` are used for catalog search. Tags must be lowercase and selected from this list:
+
+- Surfaces: `bar`, `desktop`, `launcher`, `panel`, `service`, `shortcut`
+- Purpose: `ai`, `animation`, `audio`, `clock`, `countdown`, `demo`, `development`, `emoticon`, `fun`, `gaming`,
+  `hardware`, `indicator`, `language`, `media`, `music`, `network`, `privacy`, `productivity`, `recording`, `system`,
+  `theming`, `time`, `utility`, `video`, `wallpaper`
+- Compositors: `hyprland`, `labwc`, `mangowc`, `niri`, `sway`
+- Distributions: `arch`, `debian`, `fedora`, `gentoo`, `nixos`, `opensuse`, `void`
+
+If your plugin does not fit any existing tag, propose a new one in your pull request rather than inventing a tag in
+the manifest.
+
+## Submitting
+
+Open a PR against `main`. CI validates your manifest, entry scripts, required files, and thumbnail on every push.
+
+- **One plugin per PR.**
+- The directory name matches the part of `id` after the `/` in `plugin.toml` **exactly**.
+- `version` is semver and gets bumped on every change to the plugin.
+- `min_noctalia` is the Noctalia version you actually tested against. Users on older builds are then told the plugin
+  needs an upgrade instead of getting a broken install.
+- `license` is set in `plugin.toml`. You keep the copyright on your plugin; if it is not MIT, put a `LICENSE` file in
+  your plugin directory. There is no repo-wide license covering contributed plugins.
+- Screenshots or a short video for anything with a visual surface.
+
+Maintainers read the code before merging. Expect review comments about clarity, and about anything the plugin does
+that is not obvious from its description.
+
+## Maintaining your plugin
+
+The plugin directory is yours. Someone else's PR changing your plugin is not merged without your sign-off, unless it
+fixes something that is broken or is a mechanical change applied across the whole repo. Maintainers will @-mention you
+on PRs and issues that touch it.
+
+If you stop maintaining a plugin, set `deprecated = true` in its `plugin.toml` rather than deleting the directory. The
+store keeps working for people who already installed it, but it stops being offered to new users. Plugins that are
+broken and unmaintained across a Noctalia release may be deprecated by maintainers.
+
+## Help
+
+- [Documentation](https://docs.noctalia.dev)
+- [Discord](https://discord.noctalia.dev)
+- Bugs in Noctalia itself (not in a plugin) belong in
+  [noctalia](https://github.com/noctalia-dev/noctalia/issues).
