@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """noctalia-mcp — stdio MCP shim bridging Claude Code <-> the Noctalia shell.
 
-SENSES (shell -> Claude): query the env directly — niri msg, playerctl, /sys,
-                          and `noctalia msg status` for shell-internal state.
+SENSES (shell -> Claude): query the env directly — the running compositor
+                          (niri / Hyprland / Sway), playerctl, /sys, and
+                          `noctalia msg status` for shell-internal state.
 HANDS  (Claude -> shell): `noctalia msg <action>` (request/response; reply on
                           stdout, "error:" prefix on failure). Desktop notifications
                           go through notify-send: noctalia exposes no generic notify
@@ -12,10 +13,8 @@ MCP transport: newline-delimited JSON-RPC 2.0 over stdio (one message per line,
 no embedded newlines) — the stdio transport Claude Code speaks. Spawned by Claude
 via --mcp-config; no daemon to babysit.
 
-[CEILING]: prototype in Python to prove the bridge end-to-end; port to a Rust
-`noctalia-mcp` for release. Tool set is the low/medium perception tier only —
-high-tier senses (clipboard/screen/files) stay gated until a local backend lands
-(privacy couples to model locality; see decision #26).
+Tool set is the low/medium perception tier only — high-tier senses
+(clipboard/screen/files) stay gated until a local backend lands.
 """
 import datetime
 import json
@@ -36,6 +35,156 @@ def sh(args, timeout=5):
         return (out.stdout or out.stderr).strip()
     except Exception as e:  # noqa: BLE001
         return f"error: {e}"
+
+
+# ── compositor abstraction ────────────────────────────────────────────────────
+# The window/workspace ops are the ONLY compositor-coupled surface. Everything
+# else (`noctalia msg`, playerctl, nmcli, /sys, notify-send) is compositor-neutral.
+# Noctalia runs on niri, Hyprland, and Sway but exposes no generic window/workspace
+# IPC (`noctalia msg` has no such verbs), so we speak each compositor's own protocol.
+# Detection prefers the compositor's own socket env var, then XDG_CURRENT_DESKTOP.
+#
+# Command shapes: niri verified live; Hyprland against HyprCtl.cpp + the dispatcher
+# wiki; Sway against sway-ipc(7)/sway(5). The pure helpers below (compositor_argv,
+# pick_focused_monitor, find_focused_view, sway_focused_output) do no I/O, so they
+# are unit-tested without a live session — see tests/shim_spec.py.
+SUPPORTED_COMPOSITORS = ("niri", "hyprland", "sway")
+
+
+def detect_compositor(env=None):
+    """Identify the running compositor, or None if unsupported/undetectable."""
+    env = os.environ if env is None else env
+    if env.get("NIRI_SOCKET"):
+        return "niri"
+    if env.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return "hyprland"
+    if env.get("SWAYSOCK"):
+        return "sway"
+    xdg = (env.get("XDG_CURRENT_DESKTOP") or "").lower()
+    return next((c for c in SUPPORTED_COMPOSITORS if c in xdg), None)
+
+
+def _ws_numeric(ref):
+    """A workspace ref is 'numeric' if it is a plain (optionally signed) integer."""
+    return str(ref).lstrip("-").isdigit()
+
+
+def compositor_argv(comp, op, ref=None, wid=None):
+    """Pure map (compositor, op) -> argv; no I/O, so it is directly unit-testable.
+
+    For query ops that need client-side filtering (sway focused_*, hyprland
+    focused_output) this returns the *query* argv and the caller does the filtering.
+    Workspace refs: Hyprland needs a `name:` prefix for named workspaces; Sway needs
+    the `number` keyword for numeric ones (else the int is matched as a literal name).
+    Move semantics differ slightly and are documented, not normalized: niri and
+    Hyprland follow focus to the target workspace, Sway does not."""
+    if comp == "niri":
+        return {
+            "focused_output": ["niri", "msg", "-j", "focused-output"],
+            "focused_window": ["niri", "msg", "-j", "focused-window"],
+            "focus_window": ["niri", "msg", "action", "focus-window", "--id", str(wid)],
+            "focus_workspace": ["niri", "msg", "action", "focus-workspace", str(ref)],
+            "move_to_workspace": ["niri", "msg", "action", "move-column-to-workspace", str(ref)],
+        }[op]
+    if comp == "hyprland":
+        hws = str(ref) if _ws_numeric(ref) else "name:" + str(ref)
+        return {
+            "focused_output": ["hyprctl", "-j", "monitors"],
+            "focused_window": ["hyprctl", "-j", "activewindow"],
+            "focus_window": ["hyprctl", "dispatch", "focuswindow", "address:" + str(wid)],
+            "focus_workspace": ["hyprctl", "dispatch", "workspace", hws],
+            "move_to_workspace": ["hyprctl", "dispatch", "movetoworkspace", hws],
+        }[op]
+    if comp == "sway":
+        sws = ["number", str(ref)] if _ws_numeric(ref) else [str(ref)]
+        return {
+            "focused_output": ["swaymsg", "-t", "get_outputs"],
+            "focused_window": ["swaymsg", "-t", "get_tree"],
+            "focus_window": ["swaymsg", "[con_id=%s]" % wid, "focus"],
+            "focus_workspace": ["swaymsg", "workspace"] + sws,
+            "move_to_workspace": ["swaymsg", "move", "container", "to", "workspace"] + sws,
+        }[op]
+    raise KeyError((comp, op))
+
+
+def pick_focused_monitor(mons):
+    """Hyprland `monitors` array -> the focused monitor object (or None)."""
+    return next((m for m in mons if m.get("focused")), None)
+
+
+def find_focused_view(node):
+    """Sway `get_tree` -> the focused leaf view (con/floating_con), recursively.
+
+    Constrained to view node types so an ancestor workspace/output that also
+    reports focused does not shadow the actual window."""
+    if node.get("focused") and node.get("type") in ("con", "floating_con"):
+        return node
+    for child in node.get("nodes", []) + node.get("floating_nodes", []):
+        hit = find_focused_view(child)
+        if hit:
+            return hit
+    return None
+
+
+def sway_focused_output(outputs, workspaces):
+    """Sway output objects carry no `focused` flag [SUPPORTED, sway-ipc(7)]; derive
+    the focused output from the focused workspace's `output` name."""
+    ws = next((w for w in workspaces if w.get("focused")), None)
+    if not ws:
+        return None
+    return next((o for o in outputs if o.get("name") == ws.get("output")), None)
+
+
+def _no_comp():
+    return "error: no supported compositor detected (niri/hyprland/sway)"
+
+
+def _run_json(argv):
+    """Run argv and parse stdout as JSON: (obj, None) on success, (None, err) else."""
+    out = sh(argv)
+    if out.startswith("error:"):
+        return None, out
+    try:
+        return json.loads(out), None
+    except Exception as e:  # noqa: BLE001
+        return None, f"error: bad JSON from {argv[0]}: {e}"
+
+
+def _get_workspace(a):
+    """Focused output/monitor (connector, mode, current workspace), compositor-native JSON."""
+    comp = detect_compositor()
+    if comp is None:
+        return _no_comp()
+    if comp == "niri":
+        return sh(compositor_argv(comp, "focused_output"))
+    if comp == "hyprland":
+        mons, err = _run_json(compositor_argv(comp, "focused_output"))
+        if err:
+            return err
+        foc = pick_focused_monitor(mons)
+        return json.dumps(foc) if foc else "error: no focused monitor"
+    outs, err = _run_json(["swaymsg", "-t", "get_outputs"])
+    if err:
+        return err
+    wss, err = _run_json(["swaymsg", "-t", "get_workspaces"])
+    if err:
+        return err
+    foc = sway_focused_output(outs, wss)
+    return json.dumps(foc) if foc else "error: no focused output"
+
+
+def _get_window(a):
+    """Focused window (app id/class + title), compositor-native JSON."""
+    comp = detect_compositor()
+    if comp is None:
+        return _no_comp()
+    if comp in ("niri", "hyprland"):
+        return sh(compositor_argv(comp, "focused_window"))
+    tree, err = _run_json(compositor_argv(comp, "focused_window"))
+    if err:
+        return err
+    view = find_focused_view(tree)
+    return json.dumps(view) if view else "error: no focused window"
 
 
 def _remember(a):
@@ -152,21 +301,30 @@ def _focus_window(a):
     wid = str(a.get("id") or "").strip()
     if not wid:
         return "error: 'id' is required"
-    return sh(["niri", "msg", "action", "focus-window", "--id", wid])
+    comp = detect_compositor()
+    if comp is None:
+        return _no_comp()
+    return sh(compositor_argv(comp, "focus_window", wid=wid))
 
 
 def _switch_workspace(a):
     ref = str(a.get("reference") or "").strip()
     if not ref:
         return "error: 'reference' is required"
-    return sh(["niri", "msg", "action", "focus-workspace", ref])
+    comp = detect_compositor()
+    if comp is None:
+        return _no_comp()
+    return sh(compositor_argv(comp, "focus_workspace", ref=ref))
 
 
 def _move_to_workspace(a):
     ref = str(a.get("reference") or "").strip()
     if not ref:
         return "error: 'reference' is required"
-    return sh(["niri", "msg", "action", "move-column-to-workspace", ref])
+    comp = detect_compositor()
+    if comp is None:
+        return _no_comp()
+    return sh(compositor_argv(comp, "move_to_workspace", ref=ref))
 
 
 def _set_wallpaper(a):
@@ -181,18 +339,19 @@ def _set_wallpaper(a):
 
 
 # name -> (description, inputSchema properties, handler). Commands verified against
-# noctalia 5.0.0 (`noctalia msg --help`) and `niri msg --help`.
+# noctalia 5.0.0 (`noctalia msg --help`); window/workspace ops route through the
+# compositor abstraction above (niri / Hyprland / Sway).
 TOOLS = {
     # ── senses (low/medium tier) ──────────────────────────────────────────────
     "get_workspace": (
-        "Focused niri output (connector, mode, current workspace) as JSON.",
+        "Focused output (connector, mode, current workspace) as compositor-native JSON.",
         {},
-        lambda a: sh(["niri", "msg", "-j", "focused-output"]),
+        _get_workspace,
     ),
     "get_window": (
-        "Focused window (app_id/class and title) as JSON.",
+        "Focused window (app_id/class and title) as compositor-native JSON.",
         {},
-        lambda a: sh(["niri", "msg", "-j", "focused-window"]),
+        _get_window,
     ),
     "get_media": (
         "Now-playing media (artist - title), or empty if nothing is playing.",
@@ -258,9 +417,9 @@ TOOLS = {
         lambda a: sh(["noctalia", "msg", "color-scheme-set", a.get("source", "builtin"), a.get("name", "")]),
     ),
     "focus_window": (
-        "Focus a window by its niri id (ids come from get_window / niri windows).",
+        "Focus a window by its id (the id/address returned by get_window).",
         {"id": {"type": "string", "required": True,
-                "description": "niri window id to focus"}},
+                "description": "Window id from get_window (niri id, Hyprland address, Sway con_id)"}},
         _focus_window,
     ),
     "switch_workspace": (
