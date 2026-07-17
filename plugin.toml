@@ -16,7 +16,7 @@ description = "Claude Code companion: /claude launch + a telemetry-driven attent
 # The compositor CLI (niri / hyprctl / swaymsg) is not listed: the shim detects and
 # speaks whichever of the three supported compositors is running Noctalia, so exactly
 # one is inherently present. See README "Requirements".
-dependencies = ["claude", "python3", "playerctl", "notify-send", "nmcli"]
+dependencies = ["claude", "python3", "playerctl", "notify-send", "nmcli", "ps"]
 tags = ["ai", "productivity", "bar", "desktop", "panel", "launcher"]
 
 # The attention pulse — the visual centerpiece. Reads agent state from

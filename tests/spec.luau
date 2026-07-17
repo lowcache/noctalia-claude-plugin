@@ -1,7 +1,8 @@
 -- Spec — drives pulse.luau through its public surface: the global onIpc (hook
--- reflex, per-session, with the CSV payload) and the captured claude.state callback
--- (__watch_cb, the quick-ask path). Concatenated AFTER pulse.luau, so onIpc,
--- __watch_cb, and the recorded __tt/__glyph are in scope. opus token figures are
+-- reflex, per-session, with the CSV payload) and the POLLED quick-ask path
+-- (noctalia.state.set("claude.state", …) picked up by a update() tick, the way a
+-- real bar sees it — bars don't fire state.watch). Concatenated AFTER pulse.luau, so
+-- onIpc, update, and the recorded __tt/__glyph are in scope. opus token figures are
 -- the tether-cross-checked totals (in 45129, cc 202412 → 247541 displayed).
 
 -- Load ran render() with no sessions → clean idle.
@@ -39,13 +40,15 @@ expect("needs_attention uses error accent", __color, "#FF4D1F")
 contains("needs_attention tooltip lists beta", __tt, "beta · needs you · haiku-4-5 1.2k/340")
 
 -- Quick-ask (claude.state path) joins as an ephemeral, telemetry-less session.
-__watch_cb("turn_start")
+-- Driven the real way: set the state, then a timer tick polls it (a bar never gets
+-- a watch callback — this is the regression guard for that bug).
+noctalia.state.set("claude.state", "turn_start"); update()
 contains("ask adds a session", __tt, "Claude — 3 sessions")
 contains("ask shown without burn", __tt, "ask · thinking")
 expect("ask doesn't lower urgency", __glyph, "bell-ringing")
 
 -- Ask completes → dropped (answer goes out via notify), back to two sessions.
-__watch_cb("turn_end")
+noctalia.state.set("claude.state", "turn_end"); update()
 contains("ask removed → 2 sessions", __tt, "Claude — 2 sessions")
 absent("ask gone from tooltip", __tt, "ask ·")
 

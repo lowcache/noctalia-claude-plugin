@@ -12,6 +12,7 @@ GET_WORKSPACES. They are the contract; a live nested-compositor run confirms the
 import importlib.util
 import os
 import unittest
+from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _SHIM = os.path.join(_HERE, "..", "shim", "noctalia-mcp.py")
@@ -91,6 +92,43 @@ class Argv(unittest.TestCase):
     def test_unknown_raises(self):
         with self.assertRaises(KeyError):
             mcp.compositor_argv("river", "focus_window", wid="1")
+
+
+class InjectionGuards(unittest.TestCase):
+    """swaymsg concatenates argv into Sway's command language, where `;`/`,`
+    chain further commands (exec included) — the mutator handlers must therefore
+    reject anything but strictly-safe ids/refs before compositor_argv runs."""
+
+    def test_window_ids_accepted(self):
+        for wid in ("42", "94", "0x5641f2a3b8c0", "0xABCDEF"):
+            self.assertTrue(mcp.valid_window_id(wid), wid)
+
+    def test_window_ids_rejected(self):
+        for wid in ("", " ", "1] focus; exec touch /tmp/pwn; [con_id=1",
+                    "42; exec rm -rf ~", "0x", "0xZZ", "12 34", "id=5", "-1"):
+            self.assertFalse(mcp.valid_window_id(wid), wid)
+
+    def test_workspace_refs_accepted(self):
+        for ref in ("3", "web", "1:web", "dev-2", "mail.work", "ws_9", "v2+"):
+            self.assertTrue(mcp.valid_workspace_ref(ref), ref)
+
+    def test_workspace_refs_rejected(self):
+        for ref in ("", " ", "web; exec rm -rf ~", "a b", 'na"me', "x,y",
+                    "[con_id=1]", "back\\slash", "semi;colon"):
+            self.assertFalse(mcp.valid_workspace_ref(ref), ref)
+
+    def test_mutators_refuse_unsafe_args_before_any_exec(self):
+        # Handler-level: a hostile MCP call must come back as an error string.
+        # The env is scrubbed so no compositor is detectable — if the guard ever
+        # regresses, the handler returns the no-compositor error (failing the
+        # 'invalid' assertion) instead of executing the payload on a live session.
+        with mock.patch.dict(os.environ, {}, clear=True):
+            payload = "1] focus; exec touch /tmp/pwn; [con_id=1"
+            self.assertIn("invalid window id", mcp._focus_window({"id": payload}))
+            self.assertIn("invalid workspace reference",
+                          mcp._switch_workspace({"reference": "web; exec rm -rf ~"}))
+            self.assertIn("invalid workspace reference",
+                          mcp._move_to_workspace({"reference": "a b; exec id"}))
 
 
 class HyprlandFilter(unittest.TestCase):

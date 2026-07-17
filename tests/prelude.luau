@@ -13,15 +13,16 @@ barWidget = {
   setTooltip = function(t) __tt = t end,
 }
 
--- watch() is invoked at load with ("claude.state", callback); capture the callback
--- so the spec can drive the quick-ask path the same way noctalia.state.set would.
--- set() records the last published snapshot per key (__state) so a spec can assert
--- on what the bar pulse mirrors to the presence orb ("claude.pulse").
-__watch_cb = nil
+-- A bar widget never fires state.watch in noctalia v5, so the stub is a no-op: the
+-- ONLY way a spec can make the widget see quick-ask state is set() + a timer tick,
+-- exactly as production works. (An earlier prelude captured and hand-fired the
+-- callback, which faked a delivery bars don't have — masking a real bug.) get()
+-- reads back what set() stored; set() also records claude.pulse (the orb mirror).
 __state = {}
 noctalia = {
   state = {
-    watch = function(_key, cb) __watch_cb = cb end,
+    watch = function(_key, _cb) end,
+    get = function(key) return __state[key] end,
     set = function(key, value) __state[key] = value end,
   },
   -- breath timer + palette resolution stubs. readFile returning nil makes the
