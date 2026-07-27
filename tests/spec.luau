@@ -1,107 +1,195 @@
--- Spec — drives pulse.luau through its public surface: the global onIpc (hook
--- reflex, per-session, with the CSV payload) and the POLLED quick-ask path
--- (noctalia.state.set("claude.state", …) picked up by a update() tick, the way a
--- real bar sees it — bars don't fire state.watch). Concatenated AFTER pulse.luau, so
--- onIpc, update, and the recorded __tt/__glyph are in scope. opus token figures are
--- the tether-cross-checked totals (in 45129, cc 202412 → 247541 displayed).
+-- Spec — drives pulse.luau (the bar widget view) through its subscriber surface:
+-- the captured claude.pulse watch callback (__watch["claude.pulse"]).
+-- Concatenated AFTER pulse.luau, so __watch, update, onClick, and the recorded
+-- __tt/__glyph/__color are in scope.
+--
+-- The bar is a PURE SUBSCRIBER of the rollup published by pulse-svc.luau.
 
--- Load ran render() with no sessions → clean idle.
+-- 0. Regression & Architecture assertions
+expect("regression: pulse.luau defines NO global onIpc", type(onIpc), "nil")
+expect("regression: pulse.luau defines NO global sessions table", type(sessions), "nil")
+expect("pulse.luau subscribes to claude.pulse watch", type(__watch["claude.pulse"]), "function")
+
+-- 1. Load behavior (initial state with no published snapshot)
 expect("load → idle tooltip", __tt, "Claude: idle")
 expect("load → robot glyph", __glyph, "robot")
 expect("load → idle uses secondary accent at peak", __color, "#EAFF00")
 
--- One session, full telemetry → single-session burn tooltip + bell.
-onIpc("turn_end", "opus-4-8,45129,112432,202412,4589306,alpha")
+-- 2. Single-session snapshots across states (with & without burn line)
+__watch["claude.pulse"]({
+  state = "turn_end",
+  count = 1,
+  model = "opus-4-8",
+  tin = 247541,
+  tout = 112432,
+  cr = 4589306,
+})
 expect("1 session → burn tooltip", __tt,
   "Claude: done — ready for you\nopus-4-8 · 247.5k in / 112.4k out · 4.6M cached")
 expect("1 session → bell glyph", __glyph, "bell")
 expect("turn_end uses primary accent", __color, "#B4FF00")
 
--- Same session updates in place (same sid) → still one session, new numbers.
-onIpc("tool_start", "opus-4-8,50000,120000,200000,5000000,alpha")
-expect("same sid updates in place", __tt,
+__watch["claude.pulse"]({
+  state = "tool_start",
+  count = 1,
+  model = "opus-4-8",
+  tin = 250000,
+  tout = 120000,
+  cr = 5000000,
+})
+expect("tool_start → tool glyph", __glyph, "tool")
+expect("tool_start uses secondary accent", __color, "#EAFF00")
+expect("tool_start tooltip", __tt,
   "Claude: running a tool\nopus-4-8 · 250.0k in / 120.0k out · 5.0M cached")
-expect("same sid → tool glyph", __glyph, "tool")
-expect("tool uses secondary accent", __color, "#EAFF00")
 
--- A second session appears → aggregate view; glyph = most urgent (tool > thinking).
-onIpc("turn_start", "haiku-4-5,1200,340,0,0,beta")
-expect("2 sessions → tool glyph (priority)", __glyph, "tool")
-expect("2 sessions → aggregate tooltip", __tt,
-  "Claude — 2 sessions\n" ..
-  "beta · thinking · haiku-4-5 1.2k/340\n" ..
-  "alpha · tool · opus-4-8 250.0k/120.0k\n" ..
-  "Σ 251.2k in / 120.3k out")
+__watch["claude.pulse"]({
+  state = "turn_start",
+  count = 1,
+  model = "opus-4-8",
+  tin = 0,
+  tout = 0,
+  cr = 0,
+})
+expect("turn_start (no burn) → thinking glyph", __glyph, "brain")
+expect("turn_start uses primary accent", __color, "#B4FF00")
+expect("turn_start tooltip without burn line", __tt, "Claude: thinking")
 
--- Urgency wins: beta needs you → bell-ringing regardless of recency/order.
-onIpc("needs_attention", "haiku-4-5,1200,340,0,0,beta")
+__watch["claude.pulse"]({
+  state = "needs_attention",
+  count = 1,
+  model = "haiku-4-5",
+  tin = 1200,
+  tout = 340,
+  cr = 0,
+})
 expect("needs_attention → bell-ringing glyph", __glyph, "bell-ringing")
 expect("needs_attention uses error accent", __color, "#FF4D1F")
-contains("needs_attention tooltip lists beta", __tt, "beta · needs you · haiku-4-5 1.2k/340")
-
--- Quick-ask (claude.state path) joins as an ephemeral, telemetry-less session.
--- Driven the real way: set the state, then a timer tick polls it (a bar never gets
--- a watch callback — this is the regression guard for that bug).
-noctalia.state.set("claude.state", "turn_start"); update()
-contains("ask adds a session", __tt, "Claude — 3 sessions")
-contains("ask shown without burn", __tt, "ask · thinking")
-expect("ask doesn't lower urgency", __glyph, "bell-ringing")
-
--- Ask completes → dropped (answer goes out via notify), back to two sessions.
-noctalia.state.set("claude.state", "turn_end"); update()
-contains("ask removed → 2 sessions", __tt, "Claude — 2 sessions")
-absent("ask gone from tooltip", __tt, "ask ·")
-
--- SessionEnd retires a session.
-onIpc("session_end", "opus-4-8,0,0,0,0,alpha")
-expect("session_end → 1 session, beta single view", __tt,
+expect("needs_attention tooltip with burn", __tt,
   "Claude needs you\nhaiku-4-5 · 1.2k in / 340 out")
-expect("session_end keeps beta urgency", __glyph, "bell-ringing")
 
--- Last session ends → clean idle again.
-onIpc("session_end", "haiku-4-5,0,0,0,0,beta")
-expect("all ended → idle tooltip", __tt, "Claude: idle")
-expect("all ended → robot glyph", __glyph, "robot")
-expect("all ended → secondary accent", __color, "#EAFF00")
+__watch["claude.pulse"]({
+  state = "error",
+  count = 1,
+  model = "opus-4-8",
+  tin = 0,
+  tout = 0,
+  cr = 0,
+})
+expect("error → alert-triangle glyph", __glyph, "alert-triangle")
+expect("error uses error accent", __color, "#FF4D1F")
+expect("error tooltip", __tt, "Claude: error")
 
--- A session with no real telemetry yet (SessionStart before first turn) shows
--- just its state, no "? 0/0" noise.
-onIpc("idle", "?,0,0,0,0,gamma")
-expect("zero-telemetry session → clean state", __tt, "Claude: idle")
+__watch["claude.pulse"]({
+  state = "text",
+  count = 1,
+  model = "opus-4-8",
+  tin = 100,
+  tout = 50,
+  cr = 0,
+})
+expect("text → message-dots glyph", __glyph, "message-dots")
+expect("text uses primary accent", __color, "#B4FF00")
+expect("text tooltip", __tt, "Claude: responding\nopus-4-8 · 100 in / 50 out")
 
--- Retire gamma to exercise the manual/CLI "default" slot in isolation.
-onIpc("session_end", "?,0,0,0,0,gamma")
+__watch["claude.pulse"]({
+  state = "idle",
+  count = 1,
+  model = "opus-4-8",
+  tin = 10,
+  tout = 20,
+  cr = 0,
+})
+expect("idle with 1 session → robot glyph", __glyph, "robot")
+expect("idle uses secondary accent", __color, "#EAFF00")
+expect("idle tooltip with burn", __tt, "Claude: idle\nopus-4-8 · 10 in / 20 out")
 
--- A payload-less event (manual `noctalia msg … :pulse all <event>` poke) lands in the
--- single "default" slot and is shown, so the orb can be driven from the CLI.
-onIpc("needs_attention", "")
-expect("payload-less poke shows in the default slot", __glyph, "bell-ringing")
-expect("default slot has no burn", __tt, "Claude needs you")
-onIpc("tool_start", "")
-expect("default slot updates in place", __glyph, "tool")
+-- 3. Multi-session tooltip formatting (divider lines & Sigma line)
+__watch["claude.pulse"]({
+  state = "tool_start",
+  count = 2,
+  model = "?",
+  tin = 251200,
+  tout = 120340,
+  cr = 0,
+  sessions = {
+    { sid = "beta", state = "turn_start", model = "haiku-4-5", tin = 1200, tout = 340, cr = 0 },
+    { sid = "alpha", state = "tool_start", model = "opus-4-8", tin = 250000, tout = 120000, cr = 0 },
+  },
+})
+expect("2 sessions → tool glyph (rollup priority)", __glyph, "tool")
+expect("2 sessions → aggregate tooltip with divider and Sigma", __tt,
+  "Claude — 2 sessions\n" ..
+  "beta · thinking · haiku-4-5 1.2k/340\n" ..
+  "──────────────\n" ..
+  "alpha · tool · opus-4-8 250.0k/120.0k\n" ..
+  "──────────────\n" ..
+  "Σ 251.2k in / 120.3k out")
 
--- It must never become sticky: any resting state (idle/turn_end/error) retires it,
--- so a manual test can't leave a phantom session lingering until a reload.
-onIpc("idle", "")
-expect("resting idle retires the default slot", __glyph, "robot")
-expect("default cleared → idle tooltip", __tt, "Claude: idle")
-onIpc("needs_attention", "")
-onIpc("turn_end", "")
-expect("resting turn_end also retires default", __tt, "Claude: idle")
-onIpc("needs_attention", "")
-onIpc("error", "")
-expect("resting error also retires default", __glyph, "robot")
+-- Multi-session where one session is quick-ask (zero telemetry)
+__watch["claude.pulse"]({
+  state = "needs_attention",
+  count = 2,
+  model = "?",
+  tin = 1200,
+  tout = 340,
+  cr = 0,
+  sessions = {
+    { sid = "beta", state = "needs_attention", model = "haiku-4-5", tin = 1200, tout = 340, cr = 0 },
+    { sid = "ask", state = "turn_start", model = "?", tin = 0, tout = 0, cr = 0 },
+  },
+})
+expect("2 sessions with ask → bell-ringing glyph", __glyph, "bell-ringing")
+expect("2 sessions with ask → aggregate tooltip", __tt,
+  "Claude — 2 sessions\n" ..
+  "beta · needs you · haiku-4-5 1.2k/340\n" ..
+  "──────────────\n" ..
+  "ask · thinking\n" ..
+  "──────────────\n" ..
+  "Σ 1.2k in / 340 out")
 
--- A real (payload-bearing) session is unaffected by the manual-rest rule: idle/turn_end
--- keep it; only session_end retires it.
-onIpc("idle", "opus-4-8,10,20,0,0,delta")
-expect("real session idle is kept (not retired)", __tt, "Claude: idle\nopus-4-8 · 10 in / 20 out")
-onIpc("session_end", "opus-4-8,0,0,0,0,delta")
-expect("real session retires only on session_end", __glyph, "robot")
+-- Multi-session fallback when sessions[] array is empty (older publishers)
+__watch["claude.pulse"]({
+  state = "tool_start",
+  count = 2,
+  model = "?",
+  tin = 250000,
+  tout = 120000,
+  cr = 0,
+  sessions = {},
+})
+expect("2 sessions without sessions[] array → fallback Sigma tooltip", __tt,
+  "Claude — 2 sessions\n" ..
+  "──────────────\n" ..
+  "Σ 250.0k in / 120.0k out")
 
--- The breath: state changes render at peak brightness (asserted above as the full
--- accent hex); timer ticks advance the phase and dim the glyph without touching
--- the glyph or tooltip (those are event-driven).
+-- Zero active sessions → clean idle
+__watch["claude.pulse"]({
+  state = "idle",
+  count = 0,
+  model = "?",
+  tin = 0,
+  tout = 0,
+  cr = 0,
+  sessions = {},
+})
+expect("0 sessions → clean idle tooltip", __tt, "Claude: idle")
+expect("0 sessions → robot glyph", __glyph, "robot")
+expect("0 sessions → secondary accent", __color, "#EAFF00")
+
+-- 4. Malformed & empty snapshot resilience
+__watch["claude.pulse"]("not a table")
+expect("non-table snapshot is ignored", __glyph, "robot")
+
+__watch["claude.pulse"]({})
+expect("empty snapshot falls back to idle", __glyph, "robot")
+expect("empty snapshot falls back to idle tooltip", __tt, "Claude: idle")
+expect("empty snapshot falls back to secondary accent", __color, "#EAFF00")
+
+-- 5. Click handler (panel open)
+onClick()
+expect("onClick invokes noctalia runAsync without error", __glyph, "robot")
+
+-- 6. Breath timer (update advances phase without altering glyph/tooltip)
 local tt_before, glyph_before = __tt, __glyph
 for _ = 1, 33 do update() end -- ~2 s into the 8 s idle cycle
 expect("breath dims off-peak", __color ~= "#EAFF00", true)

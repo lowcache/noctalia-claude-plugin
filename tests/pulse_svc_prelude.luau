@@ -1,41 +1,19 @@
--- Test prelude — stubs the noctalia widget API so pulse.luau runs headless.
--- Concatenated BEFORE pulse.luau (see nix/flake.nix mkRunner), so these globals
--- exist when the widget's top-level state watch and initial render execute.
--- The stubs record the last applied glyph/color/tooltip for the spec to assert on.
+-- Test prelude — stubs noctalia.state API so pulse-svc.luau runs headless.
+-- Concatenated BEFORE pulse-svc.luau (see nix/flake.nix mkRunner), so these globals
+-- exist when the service's top-level state watch and initial publish execute.
 
-__tt = nil
-__glyph = nil
-__color = nil
-
-barWidget = {
-  setGlyph = function(g) __glyph = g end,
-  setGlyphColor = function(c) __color = c end,
-  setTooltip = function(t) __tt = t end,
-}
-
--- Capture state.watch callbacks by key so the spec can push snapshots to the widget
--- (e.g. __watch["claude.pulse"](snap)), mirroring production where the aggregator
--- service (pulse-svc.luau) publishes to noctalia.state.
 __state = {}
 __watch = {}
+
 noctalia = {
   state = {
     watch = function(key, cb) __watch[key] = cb end,
     get = function(key) return __state[key] end,
     set = function(key, value) __state[key] = value end,
   },
-  setUpdateInterval = function(_ms) end,
-  readFile = function(_path) return nil, "stub" end,
-  expandPath = function(p) return p end,
-  getenv = function(_name) return nil end,
-  isDarkMode = function() return true end,
-  string = { urlEncode = function(s) return s end },
-  json = { decode = function(_s) return nil end },
-  runAsync = function(_cmd) return true end,
-  notifyError = function(_src, _msg) end,
 }
 
--- tiny assertion harness (full report, then non-zero exit via error()).
+-- Tiny assertion harness (mirrors tests/prelude.luau; kept self-contained per runner).
 local failures = 0
 function expect(label, got, want)
   if got ~= want then

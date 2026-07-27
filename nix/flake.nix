@@ -46,6 +46,13 @@
           "pulse.luau"
           "tests/spec.luau"
         ];
+      pulseSvcRunner =
+        pkgs:
+        mkRunner pkgs "pulse-svc-test" [
+          "tests/pulse_svc_prelude.luau"
+          "pulse-svc.luau"
+          "tests/pulse_svc_spec.luau"
+        ];
       orbRunner =
         pkgs:
         mkRunner pkgs "orb-test" [
@@ -72,6 +79,7 @@
           ];
           text = ''
             root="''${1:-$PWD}"
+            echo "── pulse-svc ──"; "${pulseSvcRunner pkgs}/bin/pulse-svc-test" "$root"
             echo "── pulse ──";  "${pulseRunner pkgs}/bin/pulse-test" "$root"
             echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
             echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
@@ -84,16 +92,18 @@
         default = pkgs.mkShell {
           packages = [
             pkgs.luau
+            (pulseSvcRunner pkgs)
             (pulseRunner pkgs)
             (orbRunner pkgs)
             (answerRunner pkgs)
             (allRunner pkgs)
           ];
           shellHook = ''
-            echo "luau toolchain ready. Run the widget specs:  widget-test   (all)"
-            echo "                                              pulse-test    (bar dot only)"
-            echo "                                              orb-test      (presence orb only)"
-            echo "                                              answer-test   (answer panel only)"
+            echo "luau toolchain ready. Run the widget specs:  widget-test      (all)"
+            echo "                                             pulse-svc-test   (pulse aggregator service only)"
+            echo "                                             pulse-test       (bar dot only)"
+            echo "                                             orb-test         (presence orb only)"
+            echo "                                             answer-test      (answer panel only)"
           '';
         };
       });
@@ -114,6 +124,10 @@
             type = "app";
             program = "${all}/bin/widget-test";
           };
+          pulse-svc = {
+            type = "app";
+            program = "${pulseSvcRunner pkgs}/bin/pulse-svc-test";
+          };
           pulse = {
             type = "app";
             program = "${pulseRunner pkgs}/bin/pulse-test";
@@ -130,6 +144,7 @@
       );
 
       packages = forAll (pkgs: {
+        pulse-svc-test = pulseSvcRunner pkgs;
         pulse-test = pulseRunner pkgs;
         orb-test = orbRunner pkgs;
         answer-test = answerRunner pkgs;
