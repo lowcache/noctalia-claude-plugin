@@ -4,11 +4,13 @@
 
 id = "lowcache/claude-companion"
 name = "Claude Companion"
-version = "1.0.0"
-# Prereqs (the [[panel]] kind, ui controls, plugin IPC dispatch, the barWidget/onIpc
-# surface) shipped in the 5.0.0 build running here (flake input rev 623210223c).
-# Bump if a future entry needs an API added after this rev.
-min_noctalia = "5.0.0"
+version = "1.1.0"
+# Plugin API level this manifest targets — mandatory as of the Noctalia 5 beta
+# manifest parser (replaces the older min_noctalia gate). 3 is the oldest-supported
+# level and covers every feature this plugin uses ([[panel]], ui controls, plugin IPC
+# dispatch, barWidget/onIpc). The [[service]] entry additionally needs a build that
+# ships the Service entry kind (Noctalia 5 beta, upstream rev da014f72 or newer).
+plugin_api = 3
 author = "lowcache"
 license = "MIT"
 icon = "robot"
@@ -19,10 +21,21 @@ description = "Claude Code companion: /claude launch + a telemetry-driven attent
 dependencies = ["claude", "python3", "playerctl", "notify-send", "nmcli", "ps", "tr", "timeout"]
 tags = ["ai", "productivity", "bar", "desktop", "panel", "launcher"]
 
-# The attention pulse — the visual centerpiece. Reads agent state from
-# noctalia.state ("claude.state") and from hook signals (onIpc), reflects it in the
-# bar as a glyph + a sine-breath brightness glow (folded in from the barpulse
-# A/B prototype; barpulse.luau stays in-repo as the experiment record, unregistered).
+# The pulse aggregator (headless) — the single source of truth for Claude session
+# state. Receives hook events via onIpc (noctalia msg plugin …:pulse-svc all <event>)
+# and the launcher quick-ask via state.watch("claude.state"), rolls all sessions up,
+# and publishes the snapshot to noctalia.state ("claude.pulse"). Runs at shell launch
+# with no surface, so capture never depends on the bar widget being placed — this
+# retires the old "pulse must sit on a bar" invariant (see PROTOCOL.md). Needs the
+# [[service]] entry kind (Noctalia 5 beta / post-5.0.0).
+[[service]]
+id = "pulse-svc"
+entry = "pulse-svc.luau"
+
+# The attention pulse (bar) — the visual centerpiece. A pure subscriber: watches
+# noctalia.state ("claude.pulse") published by pulse-svc and reflects it in the bar as
+# a glyph + a sine-breath brightness glow (folded in from the barpulse A/B prototype;
+# barpulse.luau stays in-repo as the experiment record, unregistered).
 [[widget]]
 id = "pulse"
 entry = "pulse.luau"

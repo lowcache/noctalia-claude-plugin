@@ -20,9 +20,9 @@ Two adapters ship in `hooks/`:
 noctalia msg plugin <target> all <event> [payload]
 ```
 
-- `<target>` is the plugin dispatch id: `<plugin-id>:<widget-entry>` —
-  `lowcache/claude-companion:pulse` for this install. Adapters must treat it as
-  configurable (`pulse-emit` reads `$PULSE_TARGET`).
+- `<target>` is the plugin dispatch id: `<plugin-id>:<entry>` —
+  `lowcache/claude-companion:pulse-svc` (the headless aggregator service) for this
+  install. Adapters must treat it as configurable (`pulse-emit` reads `$PULSE_TARGET`).
 - `all` addresses every monitor's widget instance. (`focused` or a bare
   connector errors when the widget sits on multiple bars.)
 - `[payload]` is a **single positional token** — noctalia's msg CLI splits on
@@ -138,10 +138,11 @@ long_build && pulse-emit needs_attention ci  # non-agent uses work too
 
 ## Downstream: the `claude.pulse` state mirror
 
-The widget is the **single aggregator**; subscribers (the orb, or any future
-surface) never parse events themselves. On every event — never from the
-animation timer — it publishes a rollup snapshot to noctalia shared state under
-`claude.pulse`:
+The headless `pulse-svc` **service** is the **single aggregator**; subscribers (the
+bar dot, the orb, or any future surface) never parse events themselves. On every
+event — never from a timer — it publishes a rollup snapshot to noctalia shared state
+under `claude.pulse` (top-level fields below, plus a `sessions` array of per-session
+`{sid,state,model,tin,tout,cr}` for multi-session tooltips):
 
 ```lua
 { state = <most-urgent event name>,   -- "idle" when no sessions
@@ -152,12 +153,16 @@ animation timer — it publishes a rollup snapshot to noctalia shared state unde
   cr    = <cacheRead; 0 when count > 1> }
 ```
 
-Desktop widgets receive it via `noctalia.state.watch("claude.pulse", cb)`; bar
-widgets must poll `state.get` (watch doesn't fire on bars in noctalia 5.0.0).
+Both desktop and bar widgets receive it via `noctalia.state.watch("claude.pulse",
+cb)` — state.watch fires across all of a plugin's runtimes as of the Noctalia 5 beta
+(the earlier "bars must poll" limitation is gone).
 
-## Deployment invariant
+## Deployment (retired invariant)
 
-The aggregator lives in the `pulse` **bar widget** — bar widgets only run when
-placed on a bar. If `pulse` isn't in a bar layout, every event is silently
-dropped and all subscribers freeze. Noctalia 5.0.0 has no headless plugin
-entry kind, so "pulse on a bar" is a hard install requirement.
+The aggregator is the headless `pulse-svc` **`[[service]]`** — it starts at shell
+launch and runs with no surface, so event capture never depends on any widget being
+placed. (Historically the aggregator lived in the `pulse` bar widget: if that widget
+wasn't on a bar, every event was silently dropped and all subscribers froze — the
+**D10** fragility. Retired by the `[[service]]` entry kind added in the Noctalia 5
+beta; requires `plugin_api >= 3` on a service-capable build.) The bar dot and orb are
+now pure subscribers of `claude.pulse`, so placing them is purely cosmetic.

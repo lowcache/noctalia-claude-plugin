@@ -4,7 +4,7 @@
 
 A Noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
 
-![version](https://img.shields.io/badge/version-1.0.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
+![version](https://img.shields.io/badge/version-1.1.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
 
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
@@ -62,7 +62,7 @@ noctalia msg plugins enable lowcache/claude-companion
 
 Then, in order:
 
-1. **Put the `pulse` widget on a bar** (Settings → Bar). Read the warning below first — this one isn't optional.
+1. **(Optional) Put the `pulse` widget on a bar** (Settings → Bar) for the glanceable dot — capture no longer depends on it; the headless `pulse-svc` service does the listening.
 2. Add the `orb` desktop widget if you want the ambient presence.
 3. Merge `hooks/settings.snippet.json` into `~/.claude/settings.json` so Claude's lifecycle hooks actually drive the pulse.
 4. Point Claude at `shim/noctalia-mcp.py` with `--mcp-config` to hand it the senses and hands. (Sessions you launch through `/claude` do this for you.)
@@ -70,12 +70,12 @@ Then, in order:
 Prove it works:
 
 ```sh
-noctalia msg plugin lowcache/claude-companion:pulse all needs_attention   # bar icon → red bell
-noctalia msg plugin lowcache/claude-companion:pulse all idle              # back to robot
+noctalia msg plugin lowcache/claude-companion:pulse-svc all needs_attention   # bar icon → red bell
+noctalia msg plugin lowcache/claude-companion:pulse-svc all idle              # back to robot
 ```
 
 > [!WARNING]
-> **`pulse` has to stay on a bar.** It's the sole aggregator — the one piece that hears the hooks and publishes the state everything else reads. Noctalia only runs bar widgets while they're placed on a bar, so the moment you pull `pulse` off, the plugin goes dark. The hooks keep firing into the void, the orb freezes on its last breath, and IPC pokes do nothing. If that happens, the fix is always the same: put `pulse` back on a bar.
+> **`pulse` no longer has to stay on a bar.** The sole aggregator is now the headless `pulse-svc` service, which starts with the shell and listens whether or not any widget is placed — so pulling the `pulse` dot off a bar just hides the glanceable icon; the orb keeps updating and hooks/IPC still land. This retires the old **D10** requirement, made possible by the `[[service]]` entry kind added in the Noctalia 5 beta.
 
 ## Usage
 
@@ -106,7 +106,7 @@ hooks/pulse-emit session_end mysess
 A few things worth knowing before they surprise you:
 
 - Plugin panels render at `Layer::Top`, so an overlay window — a notification, a quake terminal, a polkit prompt — can sit on top of the answer panel. The answer's still there; clear the overlay and you'll see it. There's an upstream ask in for panel layer control.
-- Bar widgets don't fire `state.watch` callbacks in Noctalia 5.0.0, so the plugin polls instead. Eight-digit hex alpha is ignored too — brightness is done by scaling RGB.
+- Eight-digit hex alpha is ignored by bar widgets — brightness is done by scaling RGB toward black. (Earlier builds didn't fire `state.watch` on bars, so the pulse polled; the Noctalia 5 beta fires it, so the bar dot is now event-driven like the orb.)
 - Builtin and wallpaper-generated palettes have no on-disk JSON, so those fall back to fixed accent colors. Custom and community palettes are followed live, rechecked every ~8 s.
 - Quick-ask rides headless `claude -p`, which doesn't refresh an expired OAuth login token — only an interactive session does ([upstream](https://github.com/anthropics/claude-code/issues/53063)). The plugin checks the token's expiry before launching and, instead of burning the request on a guaranteed 401, tells you to open a terminal Claude session first; a failure it couldn't predict gets the same message in place of the raw API error.
 - The MCP shim is a Python prototype. A compiled port is the intended endgame.
