@@ -256,6 +256,17 @@ function onClick()
   end
 end
 
+-- Right-click opens the sessions panel: the tooltip already lists concurrent
+-- sessions, but you cannot act on a tooltip — it disappears on the way to it. Same
+-- panel-open (not -toggle) reasoning as onClick above. onRightClick needs no
+-- plugin_api bump: the dispatch in plugin_widget.cpp is ungated (the level-14
+-- gate covers the DECLARATIVE `actions` manifest table, not these globals).
+function onRightClick()
+  if not noctalia.runAsync("noctalia msg panel-open 'lowcache/claude-companion:sessions'") then
+    noctalia.notifyError(tr("pulse.title"), tr("pulse.panel_launch_failed"))
+  end
+end
+
 -- Breath timer. Re-arm the interval each tick (the pattern proven live in the
 -- barpulse prototype), advance the clock, repaint the glyph brightness only —
 -- glyph/tooltip are event-driven in render() (fired from the state.watch below).

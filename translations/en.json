@@ -28,6 +28,11 @@
     "title": "pulse",
     "total": "Σ {tin} in / {tout} out"
   },
+  "sessions": {
+    "title": "Claude — {count} sessions",
+    "empty": "No live Claude sessions. Start one in a terminal, or with /claude.",
+    "retire": "Retire"
+  },
   "settings": {
     "breath_speed": {
       "description": "How fast the pulse dot and orb breathe. 1.0 is the default; higher is faster, lower is slower.",

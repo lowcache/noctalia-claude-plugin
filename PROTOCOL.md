@@ -81,6 +81,11 @@ work; you only lose the burn readout.
   every session, most recent first, with a Σ burn total.
 - `session_end` retires the slot. Nothing else does — a real session may sit
   at `idle` or `turn_end` indefinitely and stays listed.
+- Because only the trailing `session` field is read for routing, a `session_end`
+  whose payload populates *only* that field is a well-formed retire for one
+  session and nothing else: `,,,,,<session>`. The `sessions` panel's Retire
+  control emits exactly that, which is why manual retirement needs no new verb —
+  anything that can send `session_end` can already clear a stuck slot.
 - **Payload-less events** (no CSV at all — e.g. a manual
   `noctalia msg plugin … all needs_attention` poke from a terminal) land in a
   single shared `default` slot. To keep CLI pokes from leaving a phantom

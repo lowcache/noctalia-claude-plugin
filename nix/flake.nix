@@ -74,6 +74,13 @@
           "answer.luau"
           "tests/answer_spec.luau"
         ];
+      sessionsRunner =
+        pkgs:
+        mkRunner pkgs "sessions-test" [
+          "tests/sessions_prelude.luau"
+          "sessions.luau"
+          "tests/sessions_spec.luau"
+        ];
 
       # Runs every widget suite in turn; the program every entrypoint resolves to.
       allRunner =
@@ -90,6 +97,7 @@
             echo "── pulse ──";  "${pulseRunner pkgs}/bin/pulse-test" "$root"
             echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
             echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
+            echo "── sessions ──"; "${sessionsRunner pkgs}/bin/sessions-test" "$root"
             echo "── shim (compositor abstraction) ──"; python3 "$root/tests/shim_spec.py"
             echo "── manifest (settings contract) ──"; PLUGIN_ROOT="$root" python3 "$root/tests/manifest_spec.py"
           '';

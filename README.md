@@ -4,7 +4,7 @@
 
 A Noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
 
-![version](https://img.shields.io/badge/version-1.2.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
+![version](https://img.shields.io/badge/version-1.3.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
 
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
@@ -17,7 +17,7 @@ Don't run Claude Code? The signal bus is agent-agnostic — any agent, CI job, o
 | Field | Value |
 | --- | --- |
 | ID | `lowcache/claude-companion` |
-| Entries | Service: `pulse-svc`; bar widget: `pulse`; desktop widget: `orb`; panel: `answer`; launcher: `claude` |
+| Entries | Service: `pulse-svc`; bar widget: `pulse`; desktop widget: `orb`; panels: `answer`, `sessions`; launcher: `claude` |
 | Launcher Prefix | `/claude` |
 
 Built and live-tested against Noctalia 5.0.0 (build `623210223c`), with an offline widget spec suite keeping the state machine honest.
@@ -90,6 +90,14 @@ noctalia msg panel-toggle lowcache/claude-companion:answer
 Leave it open and it refreshes live while suppressing the toast, so you're never reading the same answer twice. A click outside or Esc puts it away.
 
 Hover the bar and the tooltip tells you where each session stands and what it's burning — input, output, cache reads. Run a few at once and you get a line per session plus a Σ total, with the icon always showing whichever one needs you most.
+
+**Right-click the pulse** for the sessions panel — the same rollup, but you can act on it. A tooltip disappears on the way to it; this doesn't. One row per live session with its state, model and burn, and a **Retire** button on each.
+
+Retire is there for the one failure mode you'll actually hit: a session whose `SessionEnd` hook never fired — terminal killed, hook interrupted mid-distill — sits at idle forever and keeps inflating the count. Retiring it corrects the tally from the shell, without going back to a terminal. It adds no new protocol: a retire is the ordinary `session_end` event carrying that session's id, exactly what `hooks/pulse.py` sends.
+
+```sh
+noctalia msg panel-toggle lowcache/claude-companion:sessions
+```
 
 ## Settings
 

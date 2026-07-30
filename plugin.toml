@@ -4,7 +4,7 @@
 
 id = "lowcache/claude-companion"
 name = "Claude Companion"
-version = "1.2.0"
+version = "1.3.0"
 # Plugin API level this manifest targets — mandatory as of the Noctalia 5 beta
 # manifest parser (replaces the older min_noctalia gate). 3 is the oldest-supported
 # level and covers every feature this plugin uses ([[panel]], ui controls, plugin IPC
@@ -98,6 +98,17 @@ id = "answer"
 entry = "answer.luau"
 width = 460
 height = 420
+
+# The sessions panel — the actionable form of the bar tooltip. One row per live
+# session (state, model, token burn) plus a retire control for a session whose
+# SessionEnd hook never fired. Opens on a RIGHT-click of the bar pulse (left-click
+# stays the answer panel), or via
+# `noctalia msg panel-toggle lowcache/claude-companion:sessions`.
+[[panel]]
+id = "sessions"
+entry = "sessions.luau"
+width = 440
+height = 360
 
 # /claude — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
