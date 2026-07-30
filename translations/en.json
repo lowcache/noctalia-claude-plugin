@@ -1,16 +1,74 @@
 {
+  "answer": {
+    "empty": "No answers yet. Ask one from the launcher: /claude ? <question>",
+    "title": "Claude — quick ask"
+  },
+  "launcher": {
+    "ask": "Ask Claude (one-shot)",
+    "ask_hint": "Type a question after ?",
+    "continue": "Resume last Claude session",
+    "launch": "Launch Claude Code",
+    "show_answer": "Show last answer"
+  },
+  "notify": {
+    "ask_failed": "ask failed",
+    "auth_remedy": "Claude login expired — start a Claude session in a terminal to refresh it, then re-ask.",
+    "full_answer_hint": "Full answer: click the bar pulse",
+    "no_output": "(no output)",
+    "title": "Claude"
+  },
+  "orb": {
+    "sessions": "{count} sessions"
+  },
+  "pulse": {
+    "burn": "{model} · {tin} in / {tout} out",
+    "cached": "{n} cached",
+    "panel_launch_failed": "could not launch the answer panel",
+    "sessions_header": "Claude — {count} sessions",
+    "title": "pulse",
+    "total": "Σ {tin} in / {tout} out"
+  },
   "settings": {
     "breath_speed": {
-      "label": "Breath speed",
-      "description": "How fast the pulse dot and orb breathe. 1.0 is the default; higher is faster, lower is slower."
-    },
-    "pulse_glow_floor": {
-      "label": "Bar dot glow floor",
-      "description": "How dim the bar dot gets at the low point of its breath. 0 dims to black; higher stays brighter. 0.45 is the default."
+      "description": "How fast the pulse dot and orb breathe. 1.0 is the default; higher is faster, lower is slower.",
+      "label": "Breath speed"
     },
     "orb_swell": {
-      "label": "Orb swell",
-      "description": "How far the desktop orb magnifies as it breathes. 0 keeps it a static size; 1.0 is the default; higher swells more."
+      "description": "How far the desktop orb magnifies as it breathes. 0 keeps it a static size; 1.0 is the default; higher swells more.",
+      "label": "Orb swell"
+    },
+    "pulse_glow_floor": {
+      "description": "How dim the bar dot gets at the low point of its breath. 0 dims to black; higher stays brighter. 0.45 is the default.",
+      "label": "Bar dot glow floor"
+    }
+  },
+  "state": {
+    "orb": {
+      "error": "error",
+      "idle": "idle",
+      "needs_attention": "needs you",
+      "text": "responding",
+      "tool_start": "running a tool",
+      "turn_end": "done — ready for you",
+      "turn_start": "thinking"
+    },
+    "tip": {
+      "error": "Claude: error",
+      "idle": "Claude: idle",
+      "needs_attention": "Claude needs you",
+      "text": "Claude: responding",
+      "tool_start": "Claude: running a tool",
+      "turn_end": "Claude: done — ready for you",
+      "turn_start": "Claude: thinking"
+    },
+    "word": {
+      "error": "error",
+      "idle": "idle",
+      "needs_attention": "needs you",
+      "text": "responding",
+      "tool_start": "tool",
+      "turn_end": "done",
+      "turn_start": "thinking"
     }
   }
 }

@@ -43,6 +43,8 @@ end
 __config = {}
 __watch = {}
 noctalia = {
+  -- Resolved from translations/en.json by tests/gen_tr_fixture.py.
+  tr = __tr,
   getConfig = function(k) return __config[k] end,
   state = {
     watch = function(key, cb) __watch[key] = cb end,

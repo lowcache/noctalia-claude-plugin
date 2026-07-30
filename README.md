@@ -4,7 +4,7 @@
 
 A Noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
 
-![version](https://img.shields.io/badge/version-1.1.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
+![version](https://img.shields.io/badge/version-1.2.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
 
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
@@ -44,10 +44,10 @@ And downstream is where the surfaces live. `pulse.luau` on the bar and `orb.luau
 
 ## Requirements
 
-- **Noctalia 5.0.0** on niri (Wayland)
+- **Noctalia 5.0.0** on a supported Wayland compositor — **niri**, **Hyprland**, or **Sway**. The shim detects which one is running and speaks its IPC; the widgets themselves are compositor-agnostic. You only need the CLI for the compositor you actually run — `niri`, `hyprctl` (Hyprland), or `swaymsg` (Sway) — not all three.
 - **[Claude Code](https://claude.com/claude-code)** — the `claude` agent being visualized. Optional if you're driving the widgets from another agent via [PROTOCOL.md](PROTOCOL.md).
 - **`python3`** for the MCP shim (stdlib only, no pip installs)
-- On the PATH as the shim's senses need them: `niri`, `playerctl`, `nmcli`, `notify-send`
+- On the PATH as the shim's senses need them: `playerctl`, `nmcli`, `notify-send`, `ps`
 - For the generic shell adapter (`hooks/pulse-emit`, only used when driving the widgets from a non-Claude agent): `tr` is required; `timeout` is optional — the adapter falls back to a direct dispatch when it's absent.
 
 ## Install
@@ -91,7 +91,7 @@ Leave it open and it refreshes live while suppressing the toast, so you're never
 
 Hover the bar and the tooltip tells you where each session stands and what it's burning — input, output, cache reads. Run a few at once and you get a line per session plus a Σ total, with the icon always showing whichever one needs you most.
 
-## Configuration
+## Settings
 
 The plugin declares three user settings, read via `noctalia.getConfig(<key>)`:
 

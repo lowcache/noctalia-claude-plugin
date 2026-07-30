@@ -32,6 +32,8 @@ panel = {
 
 __state = {}
 noctalia = {
+  -- Resolved from translations/en.json by tests/gen_tr_fixture.py.
+  tr = __tr,
   state = {
     get = function(key) return __state[key] end,
     set = function(key, value) __state[key] = value end,

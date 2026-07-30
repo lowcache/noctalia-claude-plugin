@@ -35,13 +35,13 @@
 -- and the size swing (below) is gentle. Urgency reads as a *faster, deeper* breath,
 -- but even "needs you" stays a breath, never a flicker.
 local VISUAL = {
-  idle            = { glyph = "robot",          color = "secondary", period = 11.0, omin = 0.45, omax = 0.80, word = "idle" },
-  turn_start      = { glyph = "brain",          color = "primary",   period = 7.5,  omin = 0.55, omax = 1.00, word = "thinking" },
-  text            = { glyph = "message-dots",   color = "primary",   period = 7.0,  omin = 0.58, omax = 1.00, word = "responding" },
-  tool_start      = { glyph = "tool",           color = "secondary", period = 7.5,  omin = 0.55, omax = 1.00, word = "running a tool" },
-  needs_attention = { glyph = "bell-ringing",   color = "error",     period = 4.5,  omin = 0.55, omax = 1.00, word = "needs you" },
-  turn_end        = { glyph = "bell",           color = "primary",   period = 8.0,  omin = 0.55, omax = 0.95, word = "done — ready for you" },
-  error           = { glyph = "alert-triangle", color = "error",     period = 5.0,  omin = 0.55, omax = 1.00, word = "error" },
+  idle            = { glyph = "robot",          color = "secondary", period = 11.0, omin = 0.45, omax = 0.80, word = "state.orb.idle" },
+  turn_start      = { glyph = "brain",          color = "primary",   period = 7.5,  omin = 0.55, omax = 1.00, word = "state.orb.turn_start" },
+  text            = { glyph = "message-dots",   color = "primary",   period = 7.0,  omin = 0.58, omax = 1.00, word = "state.orb.text" },
+  tool_start      = { glyph = "tool",           color = "secondary", period = 7.5,  omin = 0.55, omax = 1.00, word = "state.orb.tool_start" },
+  needs_attention = { glyph = "bell-ringing",   color = "error",     period = 4.5,  omin = 0.55, omax = 1.00, word = "state.orb.needs_attention" },
+  turn_end        = { glyph = "bell",           color = "primary",   period = 8.0,  omin = 0.55, omax = 0.95, word = "state.orb.turn_end" },
+  error           = { glyph = "alert-triangle", color = "error",     period = 5.0,  omin = 0.55, omax = 1.00, word = "state.orb.error" },
 }
 
 -- The orb IS the bar icon, swelling gently in and out — a desktop "bat signal". The
@@ -57,6 +57,8 @@ local phase = 0.0     -- breath phase accumulator (seconds), wrapped per period
 local breath_speed = 1.0  -- user setting (breath_speed): phase-rate multiplier
 local orb_swell = 1.0     -- user setting (orb_swell): magnification swing multiplier
 local frames = 0
+
+local function tr(key, args) return noctalia.tr(key, args) end
 
 -- Re-read user settings (cheap; called at load + every ~120 frames from onFrameTick).
 local function read_settings()
@@ -85,12 +87,12 @@ end
 -- a single attributable session.
 local function subtitle(v)
   if cur.count > 1 then
-    return cur.count .. " sessions"
+    return tr("orb.sessions", { count = cur.count })
   end
   if cur.count == 1 and cur.model ~= "?" and (cur.tin + cur.tout) > 0 then
-    return v.word .. " · " .. kfmt(cur.tin) .. "/" .. kfmt(cur.tout)
+    return tr(v.word) .. " · " .. kfmt(cur.tin) .. "/" .. kfmt(cur.tout)
   end
-  return v.word
+  return tr(v.word)
 end
 
 local function render()

@@ -22,7 +22,10 @@
         pkgs: name: files:
         pkgs.writeShellApplication {
           inherit name;
-          runtimeInputs = [ pkgs.luau ];
+          runtimeInputs = [
+            pkgs.luau
+            pkgs.python3
+          ];
           text = ''
             root="''${1:-$PWD}"
             files=(${nixpkgs.lib.concatStringsSep " " files})
@@ -34,6 +37,10 @@
             done
             tmp="$(mktemp)"; trap 'rm -f "$tmp"' EXIT
             : > "$tmp"
+            # The tr() fixture is generated from translations/en.json on every run, so the
+            # specs assert real localized output and can never drift from the strings we
+            # actually ship. Prepended so the prelude can wire it into the noctalia stub.
+            python3 "$root/tests/gen_tr_fixture.py" "$root/translations/en.json" >> "$tmp"
             for f in "''${files[@]}"; do cat "$root/$f" >> "$tmp"; done
             luau "$tmp"
           '';

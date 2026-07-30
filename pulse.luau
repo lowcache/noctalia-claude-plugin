@@ -36,6 +36,8 @@ local function xdg(env, fallback)
   return noctalia.expandPath(fallback)
 end
 
+local function tr(key, args) return noctalia.tr(key, args) end
+
 -- Minimal [theme] reader: walk lines, track the section, keep quoted k/v pairs.
 -- (Indented subsections like [theme.templates] end the block; their keys are
 -- arrays/bools and would not match the quoted-string pattern anyway.)
@@ -84,21 +86,21 @@ end
 -- `color` names an ACCENTS role; `period` is the breath cycle in seconds —
 -- urgency reads as tempo (needs-you breathes fast, idle slow).
 local VISUAL = {
-  idle            = { glyph = "robot",          color = "secondary", tip = "Claude: idle",                    period = 8.0 },
-  turn_start      = { glyph = "brain",          color = "primary",   tip = "Claude: thinking",                period = 5.0 },
-  text            = { glyph = "message-dots",   color = "primary",   tip = "Claude: responding",              period = 4.5 },
-  tool_start      = { glyph = "tool",           color = "secondary", tip = "Claude: running a tool",          period = 5.0 },
-  needs_attention = { glyph = "bell-ringing",   color = "error",     tip = "Claude needs you",                period = 3.0 },
-  turn_end        = { glyph = "bell",           color = "primary",   tip = "Claude: done — ready for you",    period = 5.5 },
-  error           = { glyph = "alert-triangle", color = "error",     tip = "Claude: error",                   period = 3.5 },
+  idle            = { glyph = "robot",          color = "secondary", tip = "state.tip.idle",                    period = 8.0 },
+  turn_start      = { glyph = "brain",          color = "primary",   tip = "state.tip.turn_start",              period = 5.0 },
+  text            = { glyph = "message-dots",   color = "primary",   tip = "state.tip.text",                    period = 4.5 },
+  tool_start      = { glyph = "tool",           color = "secondary", tip = "state.tip.tool_start",              period = 5.0 },
+  needs_attention = { glyph = "bell-ringing",   color = "error",     tip = "state.tip.needs_attention",         period = 3.0 },
+  turn_end        = { glyph = "bell",           color = "primary",   tip = "state.tip.turn_end",                period = 5.5 },
+  error           = { glyph = "alert-triangle", color = "error",     tip = "state.tip.error",                   period = 3.5 },
 }
 
 -- Compact per-session words for the multi-session tooltip (Stage 2, once the
 -- rollup carries a per-session list).
 local STATE_WORD = {
-  idle = "idle", turn_start = "thinking", text = "responding",
-  tool_start = "tool", needs_attention = "needs you",
-  turn_end = "done", error = "error",
+  idle = "state.word.idle", turn_start = "state.word.turn_start", text = "state.word.text",
+  tool_start = "state.word.tool_start", needs_attention = "state.word.needs_attention",
+  turn_end = "state.word.turn_end", error = "state.word.error",
 }
 
 -- ── breath ───────────────────────────────────────────────────────────────────
@@ -158,8 +160,8 @@ local function has_burn(s)
 end
 
 local function burn_line(s)
-  local l = string.format("%s · %s in / %s out", s.model, kfmt(s.tin), kfmt(s.tout))
-  if (s.cr or 0) > 0 then l = l .. " · " .. kfmt(s.cr) .. " cached" end
+  local l = tr("pulse.burn", { model = s.model, tin = kfmt(s.tin), tout = kfmt(s.tout) })
+  if (s.cr or 0) > 0 then l = l .. " · " .. tr("pulse.cached", { n = kfmt(s.cr) }) end
   return l
 end
 
@@ -179,19 +181,20 @@ local function render()
 
   local tip
   if snap.count == 0 then
-    tip = VISUAL.idle.tip
+    tip = tr(VISUAL.idle.tip)
   elseif snap.count == 1 then
-    tip = has_burn(snap) and (v.tip .. "\n" .. burn_line(snap)) or v.tip
+    tip = has_burn(snap) and (tr(v.tip) .. "\n" .. burn_line(snap)) or tr(v.tip)
   else
     -- A thin rule separates each session so concurrent sessions read as distinct
     -- blocks rather than one wall of text (fixed width; tooltip font is proportional
     -- so it reads as a divider, not a measured column).
     local DIV = "──────────────"
-    local lines = { string.format("Claude — %d sessions", snap.count) }
+    local lines = { tr("pulse.sessions_header", { count = snap.count }) }
     local Tin, Tout = 0, 0
     for i, s in ipairs(snap.sessions) do
       if i > 1 then lines[#lines + 1] = DIV end
-      local line = s.sid .. " · " .. (STATE_WORD[s.state] or s.state)
+      local sw = STATE_WORD[s.state] and tr(STATE_WORD[s.state]) or s.state
+      local line = s.sid .. " · " .. sw
       if has_burn(s) then
         line = line .. " · " .. s.model .. " " .. kfmt(s.tin) .. "/" .. kfmt(s.tout)
         Tin = Tin + s.tin; Tout = Tout + s.tout
@@ -201,10 +204,10 @@ local function render()
     -- fallback to the rollup's Σ figures if no per-session list was published
     if #snap.sessions == 0 and (snap.tin + snap.tout) > 0 then
       lines[#lines + 1] = DIV
-      lines[#lines + 1] = string.format("Σ %s in / %s out", kfmt(snap.tin), kfmt(snap.tout))
+      lines[#lines + 1] = tr("pulse.total", { tin = kfmt(snap.tin), tout = kfmt(snap.tout) })
     elseif (Tin + Tout) > 0 then
       lines[#lines + 1] = DIV
-      lines[#lines + 1] = string.format("Σ %s in / %s out", kfmt(Tin), kfmt(Tout))
+      lines[#lines + 1] = tr("pulse.total", { tin = kfmt(Tin), tout = kfmt(Tout) })
     end
     tip = table.concat(lines, "\n")
   end
@@ -249,7 +252,7 @@ end
 -- appeared dead in live testing). Dismiss is click-outside/Esc, panel idiom.
 function onClick()
   if not noctalia.runAsync("noctalia msg panel-open 'lowcache/claude-companion:answer'") then
-    noctalia.notifyError("pulse", "could not launch the answer panel")
+    noctalia.notifyError(tr("pulse.title"), tr("pulse.panel_launch_failed"))
   end
 end
 
