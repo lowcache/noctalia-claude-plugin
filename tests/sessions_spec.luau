@@ -30,6 +30,8 @@ contains("model and burn shown", body, "opus 2.0k/340")
 contains("cache reads shown", body, "5.0k cached")
 contains("sigma total across sessions", body, "2.4k in / 460 out")
 expect("one retire button per session", #collect(__tree, "button"), 2)
+expect("retire button is tinted, not left at the background color",
+  collect(__tree, "button")[1].props.variant, "secondary")
 
 -- 3. The retire control emits the documented protocol, nothing new
 local buttons = collect(__tree, "button")
@@ -70,6 +72,8 @@ __state["claude.pulse"] = {
 }
 update()
 body = text_of(__tree)
+contains("single session header is singular, not \"1 sessions\"", body, "1 session")
+absent("singular header does not say \"1 sessions\"", body, "1 sessions")
 contains("zero-burn session still listed", body, "fresh")
 absent("no burn figures for a zero-burn session", body, "0/0")
 expect("zero-burn session is retirable", #collect(__tree, "button"), 1)
