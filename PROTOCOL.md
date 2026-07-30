@@ -1,8 +1,8 @@
 # The Pulse Protocol
 
-An agent-agnostic contract for driving the pulse bar widget (and everything
-downstream of it: the presence orb, tooltips, `claude.pulse` subscribers). The
-widget knows nothing about Claude Code — it consumes **events** and an optional
+An agent-agnostic contract for driving the `pulse-svc` service aggregator (and everything
+downstream of it: the pulse bar widget, the presence orb, tooltips, `claude.pulse` subscribers). The
+service knows nothing about Claude Code — it consumes **events** and an optional
 **telemetry payload** over noctalia's plugin IPC. Any coding agent that can run
 a shell command on its lifecycle hooks (gemini-cli, codex, opencode, aider, a
 CI job, a cron script) can light up the same bar dot.
@@ -48,8 +48,9 @@ active; "resting" matters for the default-slot rule below.
 | `session_end` | session is over — **retires** its slot | — | — |
 
 Unknown events render as idle-with-the-event-kept-as-state-word; stick to the
-vocabulary. Glyph, accent color, and breath tempo are widget-side concerns
-(see `VISUAL` in `pulse.luau`) — the protocol only fixes the *semantics*.
+vocabulary. Glyph, accent color, and breath animation are widget-side concerns
+(see `VISUAL` in `pulse.luau`, and the `breath_speed`, `pulse_glow_floor`, and
+`orb_swell` user settings in `README.md`) — the protocol only fixes the *semantics*.
 
 ## Payload
 
@@ -72,12 +73,12 @@ model,in,out,cacheCreate,cacheRead,session
 `?,0,0,0,0,<sid>`. State tracking, urgency priority, multi-session tooltip all
 work; you only lose the burn readout.
 
-## Session semantics (what the widget guarantees)
+## Session semantics (what the service guarantees)
 
 - One slot per `session` id; re-sending updates the slot in place.
-- The bar renders the **most urgent** state across all live slots (priority
-  table above); the tooltip lists every session, most recent first, with a
-  Σ burn total.
+- The service aggregates the **most urgent** state across all live slots (priority
+  table above) into `claude.pulse`; widgets render this rollup and the tooltip lists
+  every session, most recent first, with a Σ burn total.
 - `session_end` retires the slot. Nothing else does — a real session may sit
   at `idle` or `turn_end` indefinitely and stays listed.
 - **Payload-less events** (no CSV at all — e.g. a manual

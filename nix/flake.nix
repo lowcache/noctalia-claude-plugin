@@ -84,6 +84,7 @@
             echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
             echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
             echo "── shim (compositor abstraction) ──"; python3 "$root/tests/shim_spec.py"
+            echo "── manifest (settings contract) ──"; PLUGIN_ROOT="$root" python3 "$root/tests/manifest_spec.py"
           '';
         };
     in

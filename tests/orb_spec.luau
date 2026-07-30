@@ -65,4 +65,21 @@ expect("zero-session idle label has no burn", label.props.text, "idle")
 onFrameTick("not a number")
 between("bad dt leaves opacity valid", find(__tree, "glyph").props.opacity, 0.45, 0.80)
 
+-- User setting (orb_swell): scales the magnification swing
+-- Currently in idle (period = 11.0s, phase = 1.48s after earlier tests).
+-- Advance 9520ms (9.52s) to wrap phase exactly to 0.0 (1.48 + 9.52 = 11.0 -> 0.0), where s = 0.
+onFrameTick(9520)
+near("pre-swell trough size == 70", find(__tree, "glyph").props.size, 70)
+
+__config.orb_swell = 2.0
+for _ = 1, 120 do onFrameTick(0) end -- drive re-read via 120 zero-dt frames (phase untouched)
+onFrameTick(5500) -- advance 5500ms (half of 11.0s idle period) to reach breath peak (s = 1)
+near("orb_swell=2.0 at breath peak size == 80", find(__tree, "glyph").props.size, 80)
+
+__config.orb_swell = 0.0
+for _ = 1, 120 do onFrameTick(0) end -- drive re-read for orb_swell = 0.0
+near("orb_swell=0.0 at breath peak size == 70", find(__tree, "glyph").props.size, 70)
+onFrameTick(5500) -- advance another 5500ms to trough (s = 0)
+near("orb_swell=0.0 at trough size == 70", find(__tree, "glyph").props.size, 70)
+
 done()

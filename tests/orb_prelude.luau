@@ -40,8 +40,10 @@ end
 
 -- Capture each state.watch callback by key so the spec can push snapshots the way
 -- the bar pulse's noctalia.state.set("claude.pulse", …) would.
+__config = {}
 __watch = {}
 noctalia = {
+  getConfig = function(k) return __config[k] end,
   state = {
     watch = function(key, cb) __watch[key] = cb end,
     set = function() end,

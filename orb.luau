@@ -54,6 +54,17 @@ local GLYPH_BOX = 84
 -- Live status mirrored from the bar pulse. `count` 0 means no active sessions.
 local cur = { state = "idle", count = 0, model = "?", tin = 0, tout = 0 }
 local phase = 0.0     -- breath phase accumulator (seconds), wrapped per period
+local breath_speed = 1.0  -- user setting (breath_speed): phase-rate multiplier
+local orb_swell = 1.0     -- user setting (orb_swell): magnification swing multiplier
+local frames = 0
+
+-- Re-read user settings (cheap; called at load + every ~120 frames from onFrameTick).
+local function read_settings()
+  local v = noctalia.getConfig and noctalia.getConfig("breath_speed")
+  if type(v) == "number" and v > 0 then breath_speed = v end
+  local sw = noctalia.getConfig and noctalia.getConfig("orb_swell")
+  if type(sw) == "number" and sw >= 0 then orb_swell = sw end
+end
 
 local function kfmt(n)
   n = tonumber(n) or 0
@@ -85,7 +96,7 @@ end
 local function render()
   local v, s = breath()
   local opacity = v.omin + (v.omax - v.omin) * s
-  local size = GLYPH_MIN + (GLYPH_MAX - GLYPH_MIN) * s -- the magnification swing
+  local size = GLYPH_MIN + (GLYPH_MAX - GLYPH_MIN) * s * orb_swell -- swing scaled by orb_swell
 
   desktopWidget.render(ui.column({ gap = 6, padding = 12, align = "center" }, {
     -- The "bat signal": the state icon itself, magnifying larger/smaller and breathing
@@ -111,7 +122,9 @@ end
 -- unbounded.
 function onFrameTick(dt)
   local v = VISUAL[cur.state] or VISUAL.idle
-  phase = (phase + (tonumber(dt) or 0) / 1000) % v.period
+  phase = (phase + (tonumber(dt) or 0) / 1000 * breath_speed) % v.period
+  frames = frames + 1
+  if frames % 30 == 0 then read_settings() end
   render()
 end
 
@@ -128,5 +141,6 @@ noctalia.state.watch("claude.pulse", function(snap)
 end)
 
 -- Breathe from the first frame, even before any session reports in (idle presence).
+read_settings()
 desktopWidget.setNeedsFrameTick(true)
 render()

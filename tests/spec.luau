@@ -197,4 +197,44 @@ contains("breath color stays a 6-digit hex", __color, "#")
 expect("timer tick leaves glyph alone", __glyph, glyph_before)
 expect("timer tick leaves tooltip alone", __tt, tt_before)
 
+-- 7. User settings (breath_speed, pulse_glow_floor)
+local function phase_from_color(hex, period, gf)
+  period = period or 8.0
+  gf = gf or 0.45
+  local g = tonumber(string.sub(hex, 4, 5), 16) / 255
+  local s = (g - gf) / (1.0 - gf)
+  local cos_val = 1.0 - 2.0 * s
+  if cos_val > 1 then cos_val = 1 elseif cos_val < -1 then cos_val = -1 end
+  return (period / (2 * math.pi)) * math.acos(cos_val)
+end
+
+__config.breath_speed = 2
+for _ = 1, 128 do update() end -- cross PALETTE_EVERY (128 ticks) to invoke read_settings()
+-- Snap breath to peak of idle (period 8.0)
+__watch["claude.pulse"]({ state = "tool_start", count = 1 })
+__watch["claude.pulse"]({ state = "idle", count = 1 })
+for _ = 1, 17 do update() end -- advance ~2 s past peak where cosine slope is steepest
+local p1 = phase_from_color(__color, 8.0, 0.45)
+update()
+local p2 = phase_from_color(__color, 8.0, 0.45)
+local delta = math.abs(p2 - p1)
+local ratio = delta / (60 / 1000)
+near("breath_speed=2 advances phase ~2x per update tick", ratio, 2.0, 0.15)
+
+__config.breath_speed = 1
+__config.pulse_glow_floor = 0.7
+for _ = 1, 128 do update() end -- cross PALETTE_EVERY to invoke read_settings()
+-- Snap breath to peak of needs_attention (period 3.0 -> phase snaps to 1.5 s)
+__watch["claude.pulse"]({ state = "idle", count = 1 })
+__watch["claude.pulse"]({ state = "needs_attention", count = 1 })
+-- Advance exactly 1.5 s (25 ticks at default breath_speed=1, 60ms/tick) -> phase reaches 3.0 (trough, s=0)
+for _ = 1, 25 do update() end
+local function level_from_color(hex)
+  local r = tonumber(string.sub(hex, 2, 3), 16)
+  local g = tonumber(string.sub(hex, 4, 5), 16)
+  return math.max(r, g) / 255
+end
+near("pulse_glow_floor=0.7 at trough brightness level ~0.7", level_from_color(__color), 0.7, 0.02)
+expect("trough brightness level is raised above default 0.45", level_from_color(__color) > 0.6, true)
+
 done()

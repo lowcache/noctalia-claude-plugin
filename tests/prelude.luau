@@ -16,9 +16,11 @@ barWidget = {
 -- Capture state.watch callbacks by key so the spec can push snapshots to the widget
 -- (e.g. __watch["claude.pulse"](snap)), mirroring production where the aggregator
 -- service (pulse-svc.luau) publishes to noctalia.state.
+__config = {}
 __state = {}
 __watch = {}
 noctalia = {
+  getConfig = function(k) return __config[k] end,
   state = {
     watch = function(key, cb) __watch[key] = cb end,
     get = function(key) return __state[key] end,

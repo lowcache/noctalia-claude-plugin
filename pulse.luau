@@ -105,6 +105,7 @@ local STATE_WORD = {
 local INTERVAL_MS = 60          -- ~16 fps re-render (bars can't do 60 fps)
 local BMIN, BMAX = 0.45, 1.00   -- brightness floor/ceiling the glyph breathes between
 local PALETTE_EVERY = 128       -- re-resolve accents every ~7.7 s so theme changes follow
+local SETTINGS_EVERY = 16       -- re-read user settings ~1 s so slider drags apply promptly
 
 -- Latest rollup from the aggregator (pulse-svc), received via state.watch. `cur`
 -- tracks the state currently driving the glyph + tempo so a change can snap the breath.
@@ -112,11 +113,21 @@ local snap = { state = "idle", count = 0, model = "?", tin = 0, tout = 0, cr = 0
 local cur = "idle"
 local phase = VISUAL.idle.period / 2  -- breath clock, seconds; born at peak brightness
 local ticks = 0
+local breath_speed = 1.0  -- user setting (breath_speed): phase-rate multiplier
+local glow_floor = BMIN   -- user setting (pulse_glow_floor): brightness floor at the breath trough
 
-local function level_for(period) -- raised-cosine brightness in [BMIN, BMAX]
+-- Re-read user settings (cheap; called at load + periodically from update()).
+local function read_settings()
+  local v = noctalia.getConfig and noctalia.getConfig("breath_speed")
+  if type(v) == "number" and v > 0 then breath_speed = v end
+  local g = noctalia.getConfig and noctalia.getConfig("pulse_glow_floor")
+  if type(g) == "number" and g >= 0 and g < BMAX then glow_floor = g end
+end
+
+local function level_for(period) -- raised-cosine brightness in [glow_floor, BMAX]
   local t = phase % period
   local s = 0.5 - 0.5 * math.cos((t / period) * 2 * math.pi)
-  return BMIN + (BMAX - BMIN) * s
+  return glow_floor + (BMAX - glow_floor) * s
 end
 
 -- Scale an "RRGGBB" accent toward black by factor b, returning "#RRGGBB".
@@ -247,10 +258,11 @@ end
 -- glyph/tooltip are event-driven in render() (fired from the state.watch below).
 function update()
   noctalia.setUpdateInterval(INTERVAL_MS)
-  phase = phase + INTERVAL_MS / 1000
+  phase = phase + INTERVAL_MS / 1000 * breath_speed
   if phase > 1e6 then phase = 0 end
   ticks = ticks + 1
   if ticks % PALETTE_EVERY == 0 then resolve_accents() end
+  if ticks % SETTINGS_EVERY == 0 then read_settings() end
   paint()
 end
 
@@ -259,6 +271,7 @@ end
 -- frame even if nothing has reported yet (defaults to idle).
 noctalia.state.watch("claude.pulse", apply)
 resolve_accents()
+read_settings()
 noctalia.setUpdateInterval(INTERVAL_MS)
 apply(noctalia.state.get and noctalia.state.get("claude.pulse"))
 render()

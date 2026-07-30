@@ -17,7 +17,7 @@ Don't run Claude Code? The signal bus is agent-agnostic — any agent, CI job, o
 | Field | Value |
 | --- | --- |
 | ID | `lowcache/claude-companion` |
-| Entries | Bar widget: `pulse`; desktop widget: `orb`; panel: `answer`; launcher: `claude` |
+| Entries | Service: `pulse-svc`; bar widget: `pulse`; desktop widget: `orb`; panel: `answer`; launcher: `claude` |
 | Launcher Prefix | `/claude` |
 
 Built and live-tested against Noctalia 5.0.0 (build `623210223c`), with an offline widget spec suite keeping the state machine honest.
@@ -38,9 +38,9 @@ Ask something quick with `/claude ?` and the whole answer waits for you in the p
 
 **Practice.** Everything on the backend funnels through `claude.luau`, the `/claude` launcher and the one door in. It normalizes the event vocabulary, throws `notify-send` toasts, and calls `noctalia msg` to move panels around. One chokepoint on purpose — so when something acts up, there's exactly one place to go look.
 
-**Pulse.** `pulse.luau` sits on your bar and runs the show. Hook events land here over IPC, and from there it does the rest: tracks every session at once, surfaces whichever one's most urgent, breathes in your accent color, and mirrors the rollup into `noctalia.state` under `claude.pulse` for anyone downstream to read.
+**Pulse.** `pulse-svc.luau` is a headless `[[service]]` that runs the show. Hook events land here over IPC at `lowcache/claude-companion:pulse-svc`, and from there it does the rest: tracks every session at once, surfaces whichever one's most urgent, and publishes a rollup to shared state under `claude.pulse` for subscribers to read.
 
-And downstream is where the quiet parts live. `orb.luau` is pure view. It subscribes to `claude.pulse` and breathes the same state frame by frame, glyph and opacity riding a sine wave, tempo picking up as things get urgent — no hooks, no logic of its own, just a reflection. `answer.luau` is the `answer` panel that catches a `/claude ?` reply and holds the whole thing: wrapped, scrollable, all the parts a toast lops off the end.
+And downstream is where the surfaces live. `pulse.luau` on the bar and `orb.luau` on the desktop are independent subscribers that only render. Both watch `claude.pulse` — `pulse.luau` breathes the accent color and shows per-session tooltips, while `orb.luau` breathes the same state frame by frame, glyph and opacity riding a sine wave, tempo picking up as things get urgent. Neither holds hooks or logic of its own. `answer.luau` is the `answer` panel that catches a `/claude ?` reply and holds the whole thing: wrapped, scrollable, all the parts a toast lops off the end.
 
 ## Requirements
 
@@ -90,6 +90,18 @@ noctalia msg panel-toggle lowcache/claude-companion:answer
 Leave it open and it refreshes live while suppressing the toast, so you're never reading the same answer twice. A click outside or Esc puts it away.
 
 Hover the bar and the tooltip tells you where each session stands and what it's burning — input, output, cache reads. Run a few at once and you get a line per session plus a Σ total, with the icon always showing whichever one needs you most.
+
+## Configuration
+
+The plugin declares three user settings, read via `noctalia.getConfig(<key>)`:
+
+| Setting | Type | Range | Step | Default | Description |
+| --- | --- | --- | --- | --- | --- |
+| `breath_speed` | double | 0.25–3.0 | 0.05 | 1.0 | Phase-rate multiplier for the breathing animation on both the bar dot and the desktop orb. Higher = faster. |
+| `pulse_glow_floor` | double | 0.0–0.9 | 0.05 | 0.45 | How dim the bar dot gets at the trough of its breath. 0 = dims to black, higher = stays brighter. |
+| `orb_swell` | double | 0.0–3.0 | 0.05 | 1.0 | How far the desktop orb glyph magnifies as it breathes. 0 = static size, higher = a bigger swing. |
+
+There are no color settings — both surfaces follow the active theme palette via accent role names (`secondary`, `primary`, `error`).
 
 ## Wiring up other agents
 
