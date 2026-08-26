@@ -116,6 +116,31 @@ local function mirror_mode()
   )
 end
 
+-- ── presence (the agent's own voice) ─────────────────────────────────────────
+-- Everything else here is INFERRED: hooks fire on lifecycle edges and this service
+-- deduces a state. Presence is the one channel where the agent says what it is doing
+-- in its own words (shim/noctalia-mcp.py set_presence), and it rides a file for the
+-- same reason the consent request does — a payload is one space-free token, and prose
+-- is not. An ABSENT file means no message, so clearing is an unlink, not a sentinel.
+--
+-- It is deliberately NOT a session: presence attaches to the rollup, not the session
+-- table, so it can never inflate the count or outrank a real state. MCP servers are
+-- not handed the Claude session id, so there is nothing to attribute it to yet.
+local presence = nil
+
+local function read_presence()
+  local dir = runtime_dir()
+  if not dir then presence = nil; return end
+  local raw = noctalia.readFile(dir .. "/presence")
+  if type(raw) ~= "string" or raw == "" then presence = nil; return end
+  local ok, data = pcall(noctalia.json.decode, raw)
+  if not ok or type(data) ~= "table" or type(data.message) ~= "string" or data.message == "" then
+    presence = nil
+    return
+  end
+  presence = data.message
+end
+
 -- ── publish ──────────────────────────────────────────────────────────────────
 -- Roll every live session up to the most-urgent state + burn totals and mirror it
 -- to shared state. Both surfaces subscribe to "claude.pulse" and never re-derive it.
@@ -151,6 +176,7 @@ local function publish()
     end
     snap.tin, snap.tout = Tin, Tout
   end
+  snap.message = presence
   noctalia.state.set("claude.pulse", snap)
   mirror_mode()
 end
@@ -192,6 +218,14 @@ function onIpc(event, payload)
   -- "<request id>,<session id>" (hooks/consent.py). No resolve event is needed — the
   -- PostToolUse hook's turn_start re-touches the session either way, and the panel
   -- treats the request FILE as the source of truth, so a stale id renders as empty.
+  -- The agent set or cleared its presence line. The file is the source of truth, so
+  -- one bare poke serves both: re-read, and an absent file clears the message.
+  if event == "presence" then
+    read_presence()
+    publish()
+    return
+  end
+
   if event == "consent_request" then
     local f = split(tostring(payload or ""), ",")
     local rid, sid = f[1], f[2]
@@ -218,6 +252,7 @@ end
 -- Watch the quick-ask channel, then fold any value already present (a stream in
 -- flight when the service (re)loads) and publish an initial idle rollup so a
 -- subscriber that reads "claude.pulse" before the first event sees a valid state.
+read_presence()
 noctalia.state.watch("claude.state", fold_ask)
 local init = noctalia.state.get and noctalia.state.get("claude.state")
 if type(init) == "string" and init ~= "" then

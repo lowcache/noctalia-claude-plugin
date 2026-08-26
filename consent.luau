@@ -17,6 +17,7 @@
 local SELF = "lowcache/claude-companion:consent"
 local HOOK = "$HOME/.local/share/noctalia/plugins/claude-companion/hooks/consent.py"
 local KEY = "claude.consent"
+local KEY_PULSE = "claude.pulse"
 
 local function tr(key, args) return noctalia.tr(key, args) end
 
@@ -96,6 +97,18 @@ local function render(id, req)
   local desc = type(req.description) == "string" and req.description or ""
   if desc ~= "" then
     rows[#rows + 1] = ui.label({ text = desc, maxWidth = WRAP, maxLines = 3 })
+  end
+
+  -- If Claude set a presence line (shim set_presence), show it: the description says
+  -- what the command does, this says what Claude is TRYING to do and why it got here.
+  -- That is the difference between authorising a string and authorising an intent.
+  local snap = noctalia.state.get and noctalia.state.get(KEY_PULSE)
+  local said = (type(snap) == "table" and type(snap.message) == "string") and snap.message or ""
+  if said ~= "" then
+    rows[#rows + 1] = ui.label({
+      text = tr("consent.said", { said = said }),
+      maxWidth = WRAP, maxLines = 3, opacity = 0.85,
+    })
   end
 
   local subject = req.command

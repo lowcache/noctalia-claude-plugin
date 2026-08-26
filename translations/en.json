@@ -12,7 +12,8 @@
     "allow_once": "Allow once",
     "allow_always": "Always allow",
     "deny": "Deny",
-    "fallthrough": "No answer here and Claude asks in the terminal instead, as usual."
+    "fallthrough": "No answer here and Claude asks in the terminal instead, as usual.",
+    "said": "Claude says: {said}"
   },
   "launcher": {
     "ask": "Ask Claude (one-shot)",
