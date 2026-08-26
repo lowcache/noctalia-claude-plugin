@@ -14,7 +14,9 @@
 -- exactly as it does for a launcher ask. One delivery path, one place to look.
 
 local SELF = "lowcache/claude-companion:ask"
-local BACKEND = "lowcache/claude-companion:claude"
+-- The claude ENTRY is a launcher_provider and cannot receive IPC; claude-ask is the
+-- service entry pointed at the same file, and is the addressable half. See plugin.toml.
+local BACKEND = "lowcache/claude-companion:claude-ask"
 
 local function tr(key, args) return noctalia.tr(key, args) end
 

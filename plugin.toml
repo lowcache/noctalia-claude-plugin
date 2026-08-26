@@ -154,6 +154,17 @@ height = 200
 # /claude — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
 # module system, and this is the only entry that talks to a model.
+# The quick-ask receiver. Same file as the launcher provider BY DESIGN: a
+# [[launcher_provider]] is not IPC-addressable -- `msg plugin <id>:claude all ask`
+# answers "no plugin entry matched" on every target -- so the ask panel's poke had no
+# receiver and quick-ask from the bar never ran. Pointing a [[service]] at claude.luau
+# gives the poke an entry kind that IS addressable without a second copy of
+# backend_command()'s read-only flags. The file defines only locals and callbacks, so
+# this instance costs nothing at load and sits idle until poked.
+[[service]]
+id = "claude-ask"
+entry = "claude.luau"
+
 [[launcher_provider]]
 id = "claude"
 entry = "claude.luau"

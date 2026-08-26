@@ -167,17 +167,25 @@ The service mirrors the id to `claude.consent` and opens the consent panel. Ther
 re-reads it on each tick, and the ordinary `turn_start` from the agent's next
 lifecycle hook moves the session off `needs_attention` on its own.
 
-`ask` is the other control event, and it is addressed to the **launcher** entry rather
-than the service:
+`ask` is the other control event, and it is addressed to the `claude-ask` entry:
 
 ```
-noctalia msg plugin <plugin-id>:claude all ask
+noctalia msg plugin <plugin-id>:claude-ask all ask
 ```
 
 A bare poke, no payload. The question is written to
 `$XDG_RUNTIME_DIR/claude-companion/ask` first, for the same reason as above — a
 question has spaces and a payload does not. It exists so the ask panel can reach the
 quick-ask backend without owning a second copy of its read-only flags.
+
+`claude-ask` is a `[[service]]` pointed at `claude.luau`, the same file the `claude`
+launcher entry uses. It exists because a `[[launcher_provider]]` is **not
+IPC-addressable**: dispatching to `<plugin-id>:claude` answers `no plugin entry
+matched` on every target (`all`, `focused`, a bare connector), so this event had no
+receiver at all until 1.5.0 and quick-ask from the bar silently did nothing. Pointing a
+service at the same file gives the poke an addressable receiver while keeping ONE copy
+of the read-only flags in `backend_command()`. The file declares only locals and
+callbacks, so the second instance does no work until it is poked.
 
 An adapter for another agent can emit `consent_request` if that agent has a blocking
 approval hook of its own, but nothing downstream requires it — an agent that never
