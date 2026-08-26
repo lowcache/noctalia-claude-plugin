@@ -4,7 +4,7 @@
 
 A Noctalia v5 plugin that puts [Claude Code](https://claude.com/claude-code)'s live status on your desktop — a **pulse** on the bar, a breathing **orb** on the desktop, and an **answer panel** for quick questions.
 
-![version](https://img.shields.io/badge/version-1.3.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
+![version](https://img.shields.io/badge/version-1.4.0-blue) ![license](https://img.shields.io/badge/license-MIT-informational) ![noctalia](https://img.shields.io/badge/noctalia-5.0.0-blueviolet)
 
 Claude Code is a brilliant agent trapped in a text box. It can't see the windows you have open, can't tap you on the shoulder when it hits a wall, and gives you nothing to glance at while it churns. So you sit there watching a terminal, or you wander off and miss the moment it needed you.
 
@@ -17,7 +17,7 @@ Don't run Claude Code? The signal bus is agent-agnostic — any agent, CI job, o
 | Field | Value |
 | --- | --- |
 | ID | `lowcache/claude-companion` |
-| Entries | Service: `pulse-svc`; bar widget: `pulse`; desktop widget: `orb`; panels: `answer`, `sessions`; launcher: `claude` |
+| Entries | Service: `pulse-svc`; bar widget: `pulse`; desktop widget: `orb`; panels: `answer`, `sessions`, `consent`; launcher: `claude` |
 | Launcher Prefix | `/claude` |
 
 Built and live-tested against Noctalia 5.0.0 (build `623210223c`), with an offline widget spec suite keeping the state machine honest.
@@ -66,6 +66,7 @@ Then, in order:
 2. Add the `orb` desktop widget if you want the ambient presence.
 3. Merge `hooks/settings.snippet.json` into `~/.claude/settings.json` so Claude's lifecycle hooks actually drive the pulse.
 4. Point Claude at `shim/noctalia-mcp.py` with `--mcp-config` to hand it the senses and hands. (Sessions you launch through `/claude` do this for you.)
+5. (Optional) Turn on the consent gate — see [Approving tools from the desktop](#approving-tools-from-the-desktop). It ships off; the hook in step 3 is inert until you set `consent_mode`.
 
 Prove it works:
 
@@ -101,15 +102,76 @@ noctalia msg panel-toggle lowcache/claude-companion:sessions
 
 ## Settings
 
-The plugin declares three user settings, read via `noctalia.getConfig(<key>)`:
+The plugin declares four user settings, read via `noctalia.getConfig(<key>)`:
 
 | Setting | Type | Range | Step | Default | Description |
 | --- | --- | --- | --- | --- | --- |
 | `breath_speed` | double | 0.25–3.0 | 0.05 | 1.0 | Phase-rate multiplier for the breathing animation on both the bar dot and the desktop orb. Higher = faster. |
 | `pulse_glow_floor` | double | 0.0–0.9 | 0.05 | 0.45 | How dim the bar dot gets at the trough of its breath. 0 = dims to black, higher = stays brighter. |
 | `orb_swell` | double | 0.0–3.0 | 0.05 | 1.0 | How far the desktop orb glyph magnifies as it breathes. 0 = static size, higher = a bigger swing. |
+| `consent_mode` | select | off / learn / enforce | — | `off` | The tool-consent gate. See [Approving tools from the desktop](#approving-tools-from-the-desktop). |
 
 There are no color settings — both surfaces follow the active theme palette via accent role names (`secondary`, `primary`, `error`).
+
+## Approving tools from the desktop
+
+Everything above is observation: the pulse tells you Claude is blocked, and you go
+find the terminal. The **consent gate** closes that loop — Claude asks, you answer on
+the desktop, and the tool runs or doesn't. You never leave what you were doing.
+
+It is **off by default** and should stay off until you have read this section, because
+unlike the rest of the plugin it sits in the critical path of a tool call.
+
+Set `consent_mode` in the plugin's settings:
+
+| Mode | What happens |
+| --- | --- |
+| `off` | The hook exits immediately. Identical to not having it installed. |
+| `learn` | Records what Claude runs. Never blocks, never prompts. |
+| `enforce` | Anything not already allowlisted opens the consent panel and waits. |
+
+**Start in `learn` for a few days of normal work.** It writes one line per gated tool
+call to `$XDG_RUNTIME_DIR/claude-companion/learn.jsonl`, which is how the allowlist
+gets seeded from traffic you actually produce instead of from anyone's guess about
+what is safe. When it has seen enough:
+
+```sh
+python3 hooks/consent.py promote   # fold every observed command into the allowlist
+```
+
+Then switch to `enforce`. The commands you already run are silent from the first
+enforced session; only something new stops to ask.
+
+**What gets gated.** Only the mutating tools — the matcher in
+`hooks/settings.snippet.json` is `Bash|Write|Edit|NotebookEdit`. Reads, greps and
+globs are never gated and never invoke the hook at all. Widen or narrow it by editing
+that matcher; it is your `settings.json`, not the plugin's.
+
+**The panel** leads with Claude's own description of what the command is for, then the
+command itself, then the cwd and session. Three answers: **Allow once**, **Always
+allow** (appends to the allowlist), **Deny**.
+
+**Nothing here classifies anything.** The allowlist ships empty and only ever grows by
+your explicit click, keyed on the *exact* command string. There is no pattern matching
+and no shipped safelist, because a pattern is a security policy and shell composition
+(`git status && rm -rf ~`) defeats one in a single line.
+
+**If anything goes wrong, the gate gets out of the way.** Printing nothing is Claude
+Code's "no decision, proceed normally", and every failure route takes it: Noctalia
+offline (detected on dispatch, so it fails fast rather than waiting), no answer inside
+the hook's 110s deadline, a response that doesn't echo the request nonce, a malformed
+payload, an unhandled exception. In all of them Claude Code asks in the terminal
+exactly as it did before. `tests/consent_spec.py` pins every one of those paths.
+
+**Forgery.** Requests and responses live in `$XDG_RUNTIME_DIR` (0700, tmpfs, per-user)
+at 0600, and each response must echo a nonce from its request. Without
+`XDG_RUNTIME_DIR` the gate disables itself rather than fall back to a world-writable
+`/tmp`, where any local process could drop an `allow` of its own.
+
+> [!NOTE]
+> The allowlist lives at `$XDG_STATE_HOME/noctalia/claude-companion/allow.jsonl` and is
+> meant to persist. On an impermanent root, make sure that path is on your persist list
+> or you will re-approve everything after each boot.
 
 ## Wiring up other agents
 

@@ -78,6 +78,44 @@ local function touch(sid, state, p)
   sessions[sid] = s
 end
 
+-- ── consent mode mirror ──────────────────────────────────────────────────────
+-- hooks/consent.py runs as a Claude Code hook, outside the shell, so it cannot call
+-- noctalia.getConfig. The service mirrors the `consent_mode` setting into a file the
+-- hook reads instead, keeping the Noctalia setting the single source of truth.
+--
+-- A MISSING file means off, which is what makes this safe: if the shell is not
+-- running there is nothing that could answer a prompt, and the gate stays inert.
+local MODES = { off = true, learn = true, enforce = true }
+local last_mode = nil
+
+local function shq(s)
+  return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+-- No guessed fallback: a wrong runtime dir is worse than none. Absent the variable
+-- the mirror is skipped, the mode file never appears, and the gate reads that as off
+-- — the same conclusion hooks/consent.py reaches for the same reason.
+local function runtime_dir()
+  local v = noctalia.getenv and noctalia.getenv("XDG_RUNTIME_DIR")
+  if type(v) == "string" and v ~= "" then return v .. "/claude-companion" end
+  return nil
+end
+
+-- Written only on change: publish() runs on every event, and rewriting an unchanged
+-- mode on each one would be a shell-out per tool call.
+local function mirror_mode()
+  local m = noctalia.getConfig and noctalia.getConfig("consent_mode")
+  if not MODES[m] then m = "off" end
+  if m == last_mode then return end
+  local dir = runtime_dir()
+  if not dir then return end
+  last_mode = m
+  noctalia.runAsync(
+    "mkdir -p -m 700 " .. shq(dir) ..
+    " && printf %s " .. shq(m) .. " > " .. shq(dir .. "/mode")
+  )
+end
+
 -- ── publish ──────────────────────────────────────────────────────────────────
 -- Roll every live session up to the most-urgent state + burn totals and mirror it
 -- to shared state. Both surfaces subscribe to "claude.pulse" and never re-derive it.
@@ -114,6 +152,7 @@ local function publish()
     snap.tin, snap.tout = Tin, Tout
   end
   noctalia.state.set("claude.pulse", snap)
+  mirror_mode()
 end
 
 -- ── quick-ask feed (launcher) ────────────────────────────────────────────────
@@ -147,6 +186,24 @@ end
 local MANUAL_REST = { idle = true, turn_end = true, error = true }
 function onIpc(event, payload)
   if type(event) ~= "string" then return end
+
+  -- A consent prompt is outstanding: publish the request id for the panel to pick up
+  -- and drive that session to needs_attention so the bar reflects it. Payload is
+  -- "<request id>,<session id>" (hooks/consent.py). No resolve event is needed — the
+  -- PostToolUse hook's turn_start re-touches the session either way, and the panel
+  -- treats the request FILE as the source of truth, so a stale id renders as empty.
+  if event == "consent_request" then
+    local f = split(tostring(payload or ""), ",")
+    local rid, sid = f[1], f[2]
+    if not rid or rid == "" then return end
+    noctalia.state.set("claude.consent", { id = rid, sid = sid or "" })
+    if sid and sid ~= "" then
+      touch(sid, "needs_attention", nil)
+      publish()
+    end
+    return
+  end
+
   local p = parse_payload(payload)
   local sid = (p and p.sid) or "default"
   if event == "session_end" or (sid == "default" and MANUAL_REST[event]) then

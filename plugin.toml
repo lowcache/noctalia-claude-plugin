@@ -4,7 +4,7 @@
 
 id = "lowcache/claude-companion"
 name = "Claude Companion"
-version = "1.3.0"
+version = "1.4.0"
 # Plugin API level this manifest targets — mandatory as of the Noctalia 5 beta
 # manifest parser (replaces the older min_noctalia gate). 3 is the oldest-supported
 # level and covers every feature this plugin uses ([[panel]], ui controls, plugin IPC
@@ -63,6 +63,25 @@ min = 0.0
 max = 3.0
 step = 0.05
 
+# The tool-consent gate (hooks/consent.py). OFF is the default and behaves exactly as
+# if the hook were not installed — this sits in the critical path of every gated tool
+# call, so it must be opted into rather than arrive with an upgrade.
+#   learn    record what Claude runs, never block; seeds the allowlist from real traffic
+#   enforce  block anything not already allowlisted, and ask here
+# pulse-svc mirrors this value into $XDG_RUNTIME_DIR/claude-companion/mode, because the
+# hook runs outside the shell and cannot call getConfig. A missing file means off.
+[[setting]]
+key = "consent_mode"
+type = "select"
+label_key = "settings.consent_mode.label"
+description_key = "settings.consent_mode.description"
+default = "off"
+options = [
+  { value = "off", label_key = "settings.consent_mode.option.off" },
+  { value = "learn", label_key = "settings.consent_mode.option.learn" },
+  { value = "enforce", label_key = "settings.consent_mode.option.enforce" },
+]
+
 # The pulse aggregator (headless) — the single source of truth for Claude session
 # state. Receives hook events via onIpc (noctalia msg plugin …:pulse-svc all <event>)
 # and the launcher quick-ask via state.watch("claude.state"), rolls all sessions up,
@@ -109,6 +128,17 @@ id = "sessions"
 entry = "sessions.luau"
 width = 440
 height = 360
+
+# The consent panel — the desktop half of the tool-approval gate. hooks/consent.py
+# blocks a PreToolUse call, dispatches consent_request into pulse-svc, and the service
+# opens this panel with the request id as its context. Answering releases the hook;
+# not answering lets it hit its own deadline and fall through to Claude Code's normal
+# permission prompt. Inert unless `consent_mode` is set to enforce.
+[[panel]]
+id = "consent"
+entry = "consent.luau"
+width = 480
+height = 340
 
 # /claude — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin
