@@ -133,7 +133,7 @@ end
 -- preview and whether anything was dropped (→ the toast gains a pointer to the
 -- full answer).
 local PREVIEW_MAX = 200
-local function preview(text)
+local function preview(text: string)
   local flat = text:gsub("%s+", " ")
   if #flat <= PREVIEW_MAX then return flat, false end
   local cut = flat:sub(1, PREVIEW_MAX):match("^(.*)%s%S*$") or flat:sub(1, PREVIEW_MAX)
