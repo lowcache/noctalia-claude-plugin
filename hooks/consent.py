@@ -132,8 +132,15 @@ def _allowed(key):
 
 def _record(rt, tool, key, tool_input):
     """learn mode: append one observation. Ephemeral by design — an unpromoted week
-    of observations is not something to carry across a reboot."""
-    if not rt:
+    of observations is not something to carry across a reboot.
+
+    Multi-line commands are observed but NOT recorded. The allowlist matches exactly,
+    so an ad-hoc heredoc or a chained script will never recur verbatim: promoting one
+    adds a key that can never match again and bloats the file it is meant to keep
+    readable. They still prompt under enforce, which is the right outcome — a one-off
+    multi-line script is precisely the thing worth being asked about.
+    """
+    if not rt or "\n" in key:
         return
     row = {
         "key": key,

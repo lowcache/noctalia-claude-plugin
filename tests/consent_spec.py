@@ -287,6 +287,20 @@ class Learn(Harness):
         self.assertEqual(rows[0]["key"], "Bash:npm test")
         self.assertEqual(rows[0]["description"], "Run the test suite")
 
+    def test_multiline_commands_are_not_recorded(self):
+        # An ad-hoc heredoc never recurs verbatim, so an exact-match key for it could
+        # never match again — recording it would only bloat the allowlist.
+        self.set_mode("learn")
+        self.run_gate(hook_input(tool_input={"command": "echo a\necho b"}), dispatch_ok=False)
+        self.assertFalse(os.path.exists(os.path.join(self.rt, "claude-companion", "learn.jsonl")))
+
+    def test_multiline_still_gates_under_enforce(self):
+        # Not recording is a learn-mode choice, not an exemption.
+        self.set_mode("enforce")
+        got = self.run_gate(hook_input(tool_input={"command": "echo a\necho b"}),
+                            responder=lambda s: s.write_response("toolu_01ABC", "deny"))
+        self.assertEqual(json.loads(got)["hookSpecificOutput"]["permissionDecision"], "deny")
+
     def test_promote_folds_and_dedupes(self):
         self.set_mode("learn")
         for cmd in ("npm test", "ls", "npm test"):
