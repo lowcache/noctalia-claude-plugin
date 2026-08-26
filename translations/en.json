@@ -3,6 +3,13 @@
     "empty": "No answers yet. Ask one from the launcher: /claude ? <question>",
     "title": "Claude — quick ask"
   },
+  "ask": {
+    "title": "Ask Claude",
+    "placeholder": "One quick question…",
+    "send": "Ask",
+    "delivery": "The answer opens in the answer panel and arrives as a notification.",
+    "no_runtime": "No XDG_RUNTIME_DIR, so there is nowhere to hand the question over."
+  },
   "consent": {
     "title": "Permission request",
     "title_tool": "Claude wants to run {tool}",

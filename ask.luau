@@ -1,0 +1,99 @@
+-- The ask panel — a one-off question without going through the launcher.
+--
+-- Quick-ask was only ever reachable as `/claude ? …`, which means opening the
+-- launcher, typing a prefix, and remembering the `?`. That is a lot of ceremony for
+-- the lightest thing this plugin does, and it is why the feature went unused. A
+-- middle-click on the bar pulse opens this instead: type, Enter, done.
+--
+-- Pure surface, same doctrine as every other panel here. It owns no backend: the
+-- question goes to a file and a bare `ask` poke goes to the claude entry, which runs
+-- the SAME run_ask() the launcher uses. The panel never sees the read-only flags in
+-- backend_command(), so there is no second copy of them to drift.
+--
+-- The answer does not come back here — it lands in the answer panel and a toast,
+-- exactly as it does for a launcher ask. One delivery path, one place to look.
+
+local SELF = "lowcache/claude-companion:ask"
+local BACKEND = "lowcache/claude-companion:claude"
+
+local function tr(key, args) return noctalia.tr(key, args) end
+
+-- Panel surface is 460 logical px (plugin.toml).
+local WRAP = 404
+local PAD = 14
+
+local draft = ""
+
+local function shq(s)
+  return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
+end
+
+-- Same stance as the consent panel and the hook: without XDG_RUNTIME_DIR there is
+-- nowhere private to put the question, and a guessed uid path is worse than none.
+local function runtime_dir()
+  local v = noctalia.getenv and noctalia.getenv("XDG_RUNTIME_DIR")
+  if type(v) == "string" and v ~= "" then return v .. "/claude-companion" end
+  return nil
+end
+
+-- The question reaches a shell command, so it is QUOTED (shq), never allowlisted:
+-- unlike a session id or a request id this is free-form user text and restricting
+-- its alphabet would break the feature. printf %s takes it as a literal operand.
+-- onSubmit hands the current value straight to the callback, so Enter does not
+-- depend on an onChange having landed first; the button path falls back to `draft`.
+local function submit(value)
+  local q = (type(value) == "string" and value ~= "") and value or draft
+  if type(q) ~= "string" then return end
+  q = q:gsub("^%s+", ""):gsub("%s+$", "")
+  if q == "" then return end
+
+  local dir = runtime_dir()
+  if not dir then
+    noctalia.notifyError(tr("notify.title"), tr("ask.no_runtime"))
+    return
+  end
+
+  -- Write, then poke. The backend reads the file on the other side of the dispatch,
+  -- so the write must land first — hence one shell command, not two runAsync calls
+  -- whose ordering is not guaranteed.
+  noctalia.runAsync(
+    "mkdir -p -m 700 " .. shq(dir)
+      .. " && printf %s " .. shq(q) .. " > " .. shq(dir .. "/ask")
+      .. " && noctalia msg plugin " .. shq(BACKEND) .. " all ask"
+  )
+  draft = ""
+  noctalia.runAsync("noctalia msg panel-close " .. shq(SELF))
+end
+
+local function render()
+  local rows = {
+    ui.label({ text = tr("ask.title"), fontWeight = "bold" }),
+    ui.input({
+      -- `key` is the host's identity for the field across re-renders; a stable one
+      -- keeps focus and the caret where they are instead of resetting mid-type.
+      key = "ask-input",
+      value = draft,
+      placeholder = tr("ask.placeholder"),
+      -- The whole point is that this is faster than the launcher, so it takes focus
+      -- on open: middle-click, type, Enter — no click into the field first.
+      focus = true,
+      flexGrow = 1,
+      onChange = function(v) draft = tostring(v or "") end,
+      onSubmit = submit,
+    }),
+    ui.row({ gap = 8, align = "center" }, {
+      ui.button({ text = tr("ask.send"), variant = "primary", onClick = function() submit(draft) end }),
+    }),
+    -- Say where the answer goes, because it does NOT come back to this panel.
+    ui.label({ text = tr("ask.delivery"), maxWidth = WRAP, opacity = 0.6 }),
+  }
+
+  -- Deliberately UNFILLED, same as the other panels: the host insets a decorated
+  -- panel, so a fill on the root leaves the panel colour as a rim.
+  panel.render(ui.column({ padding = PAD, gap = 8, flexGrow = 1 }, rows))
+end
+
+function onOpen(_context)
+  draft = ""
+  render()
+end

@@ -167,6 +167,18 @@ The service mirrors the id to `claude.consent` and opens the consent panel. Ther
 re-reads it on each tick, and the ordinary `turn_start` from the agent's next
 lifecycle hook moves the session off `needs_attention` on its own.
 
+`ask` is the other control event, and it is addressed to the **launcher** entry rather
+than the service:
+
+```
+noctalia msg plugin <plugin-id>:claude all ask
+```
+
+A bare poke, no payload. The question is written to
+`$XDG_RUNTIME_DIR/claude-companion/ask` first, for the same reason as above — a
+question has spaces and a payload does not. It exists so the ask panel can reach the
+quick-ask backend without owning a second copy of its read-only flags.
+
 An adapter for another agent can emit `consent_request` if that agent has a blocking
 approval hook of its own, but nothing downstream requires it — an agent that never
 emits it simply never raises a prompt.

@@ -4,7 +4,7 @@
 
 id = "lowcache/claude-companion"
 name = "Claude Companion"
-version = "1.4.0"
+version = "1.5.0"
 # Plugin API level this manifest targets — mandatory as of the Noctalia 5 beta
 # manifest parser (replaces the older min_noctalia gate). 3 is the oldest-supported
 # level and covers every feature this plugin uses ([[panel]], ui controls, plugin IPC
@@ -139,6 +139,17 @@ id = "consent"
 entry = "consent.luau"
 width = 480
 height = 340
+
+# The ask panel — a one-off question straight from the bar, opened by a MIDDLE-click
+# on the pulse (left is the answer panel, right is sessions). It owns no backend: the
+# question goes to a file and an `ask` poke goes to the claude entry, which runs the
+# same quick-ask path as `/claude ? …`. The answer lands in the answer panel and a
+# toast, exactly as a launcher ask does.
+[[panel]]
+id = "ask"
+entry = "ask.luau"
+width = 460
+height = 200
 
 # /claude — launch a real Claude Code session in the terminal, or a one-shot ask.
 # The single backend chokepoint (invoke/parse) is inlined here: v5 has no plugin

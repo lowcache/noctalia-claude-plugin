@@ -27,7 +27,7 @@
         ];
 
         # Entries only: noctalia.d.luau is INPUT to the analyser, not a target of it.
-        luauFiles = "answer.luau barpulse.luau claude.luau consent.luau orb.luau pulse.luau pulse-svc.luau sessions.luau";
+        luauFiles = "answer.luau ask.luau barpulse.luau claude.luau consent.luau orb.luau pulse.luau pulse-svc.luau sessions.luau";
       in
       {
         devShells.default = pkgs.mkShell {
