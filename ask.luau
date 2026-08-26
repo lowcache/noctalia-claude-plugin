@@ -21,6 +21,13 @@ local function tr(key, args) return noctalia.tr(key, args) end
 -- Panel surface is 460 logical px (plugin.toml).
 local WRAP = 404
 local PAD = 14
+-- The panel's first child is a text label whose line box carries ~5px of slack above
+-- the cap line; its last is a filled button rect that carries none. So a uniform inset
+-- puts the title 19px from the top edge and the button 14px from the bottom, and the
+-- eye reads that as top-heavy. The 5px goes back UNDER the button rather than coming
+-- off the top: a per-side padding table is silently ignored on a column by Noctalia
+-- 5.0.0 (it zeroes the top and widens the row), while on a row it is honoured.
+local SLACK = 5
 
 local draft = ""
 
@@ -86,7 +93,7 @@ local function render()
     -- Say where the answer goes, because it does NOT come back to this panel.
     ui.label({ text = tr("ask.delivery"), maxWidth = WRAP, opacity = 0.6 }),
     -- Action last and trailing-aligned, the shape a confirm control is looked for in.
-    ui.row({ justify = "end", gap = 8 }, {
+    ui.row({ justify = "end", gap = 8, padding = { bottom = SLACK } }, {
       ui.button({ text = tr("ask.send"), variant = "primary", onClick = function() submit(draft) end }),
     }),
   }
