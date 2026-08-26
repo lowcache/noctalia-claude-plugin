@@ -18,13 +18,21 @@ else is optional.
 
 ## The gates
 
-`make check` runs three, and `nix flake check` runs the same three hermetically:
+`make check` runs four, and `nix flake check` runs the same four hermetically:
 
 | Gate | What it catches |
 | --- | --- |
 | `make syntax` | `luau-analyze` — parse errors, type errors, unknown globals, unused locals |
 | `make specs` | the Python suites under `tests/` |
+| `make widgets` | the Luau widget suites — each entry run headless against a stubbed host |
 | `make i18n` | a `tr()` key or manifest `label_key` with no entry in `translations/en.json` |
+
+`make widgets` is the one that runs the code rather than reading it. A suite is a
+prelude (stubs `noctalia`/`ui`/`barWidget`…, records what the widget applied), the
+entry itself, and a spec, concatenated in that order and handed to `luau`; the spec
+asserts on the recorded tooltip, glyph, colour and dispatched command. The suite list
+lives in `scripts/run-widget-specs.sh`, which is also what `nix/flake.nix` drives for
+the per-widget runners (`nix run ./nix#orb` and friends) — one list, three callers.
 
 ### Why `luau-analyze` is the important one
 

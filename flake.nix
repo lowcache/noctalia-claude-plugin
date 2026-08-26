@@ -65,6 +65,25 @@
             done
             touch $out
           '';
+
+          # luau-analyze proves the entries parse; this proves they run. The
+          # suites are older than this check -- they were reachable only via
+          # nix/flake.nix, so no gate ran them and `nix flake check` was green
+          # over a widget that could not load.
+          widget-specs =
+            pkgs.runCommand "widget-specs"
+              {
+                buildInputs = [
+                  pkgs.luau
+                  pkgs.python3
+                  pkgs.bash
+                ];
+              }
+              ''
+                cd ${./.}
+                bash scripts/run-widget-specs.sh .
+                touch $out
+              '';
         };
 
         formatter = pkgs.nixfmt-tree;

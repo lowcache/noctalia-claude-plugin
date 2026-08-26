@@ -17,3 +17,7 @@ result-*
 
 # full-length capture sources, kept for re-trimming; not shipped
 assets/.raw/
+
+# direnv's cached nix profile (machine-local build artifact, ~2200 lines of
+# generated shell; it was committed once by accident)
+.direnv/
