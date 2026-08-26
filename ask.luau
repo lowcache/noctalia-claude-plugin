@@ -77,20 +77,23 @@ local function render()
       -- The whole point is that this is faster than the launcher, so it takes focus
       -- on open: middle-click, type, Enter — no click into the field first.
       focus = true,
-      flexGrow = 1,
+      -- No flexGrow: the parent is a COLUMN, so growth there is VERTICAL — the field
+      -- would eat the panel's slack and paint over what follows it. Width comes free
+      -- from the column's cross-axis stretch, which is what the field actually wants.
       onChange = function(v) draft = tostring(v or "") end,
       onSubmit = submit,
     }),
-    ui.row({ gap = 8, align = "center" }, {
-      ui.button({ text = tr("ask.send"), variant = "primary", onClick = function() submit(draft) end }),
-    }),
     -- Say where the answer goes, because it does NOT come back to this panel.
     ui.label({ text = tr("ask.delivery"), maxWidth = WRAP, opacity = 0.6 }),
+    -- Action last and trailing-aligned, the shape a confirm control is looked for in.
+    ui.row({ justify = "end", gap = 8 }, {
+      ui.button({ text = tr("ask.send"), variant = "primary", onClick = function() submit(draft) end }),
+    }),
   }
 
   -- Deliberately UNFILLED, same as the other panels: the host insets a decorated
   -- panel, so a fill on the root leaves the panel colour as a rim.
-  panel.render(ui.column({ padding = PAD, gap = 8, flexGrow = 1 }, rows))
+  panel.render(ui.column({ padding = PAD, gap = 6, flexGrow = 1 }, rows))
 end
 
 function onOpen(_context)
