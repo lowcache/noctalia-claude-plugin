@@ -206,6 +206,12 @@ A few things worth knowing before they surprise you:
 - The MCP shim is a Python prototype. A compiled port is the intended endgame.
 - The shim's memory tool drops notes into `~/.memory/inbox` for the memd curator to pick up. No memd, no reader — the files get written and simply sit there. It follows memd's Inbox Protocol v1.0 (`INBOX-PROTOCOL.md` in the memd repo).
 
+## Support
+
+If this plugin is useful to you, you can [sponsor the work](https://github.com/sponsors/lowcache)
+or [buy me a coffee](https://buymeacoffee.com/lowcache). Bug reports and upstream
+fixes are worth just as much.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
