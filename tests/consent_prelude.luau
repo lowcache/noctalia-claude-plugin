@@ -33,6 +33,7 @@ panel = {
 
 __RT = "/run/user/1000"
 __files = {}  -- path -> decoded request table (see json.decode below)
+__raw = {}    -- path -> literal string, for files the entry reads as text
 __cmds = {}   -- every runAsync command, in order
 
 -- readFile hands back an opaque token and json.decode maps it back to the table:
@@ -45,9 +46,11 @@ noctalia = {
   tr = __tr,
   getenv = function(name)
     if name == "XDG_RUNTIME_DIR" then return __RT end
+    if name == "XDG_STATE_HOME" then return __STATE_HOME end
     return nil
   end,
   readFile = function(path)
+    if __raw[path] ~= nil then return __raw[path] end
     if __files[path] == nil then return nil end
     return TOKEN .. path
   end,
@@ -78,6 +81,14 @@ function __queue(...)
   local ids = { ... }
   __state["claude.consent"] = { id = ids[1], ids = ids, sid = "abcd1234" }
 end
+__STATE_HOME = "/home/u/.local/state"
+function __learn_path() return __STATE_HOME .. "/noctalia/claude-companion/learn.jsonl" end
+function __observations(n)
+  local lines = {}
+  for i = 1, n do lines[#lines + 1] = '{"key":"Bash:cmd' .. i .. '"}' end
+  __raw[__learn_path()] = table.concat(lines, "\n") .. "\n"
+end
+
 function __last_cmd() return __cmds[#__cmds] end
 function __cmds_matching(needle)
   local n = 0
@@ -104,6 +115,17 @@ function __texts()
   walk(__tree)
   return out
 end
+-- Position matters in an approval dialog: what is being authorised must not sit
+-- below the model's own description of it.
+function __index_of(needle)
+  for i, t in ipairs(__texts()) do
+    if string.find(t, needle, 1, true) then return i end
+  end
+  return -1
+end
+
+function __has_os_time() return type(os) == "table" and type(os.time) == "function" end
+
 function __rendered()
   return table.concat(__texts(), "\n")
 end

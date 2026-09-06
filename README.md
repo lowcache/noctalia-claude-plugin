@@ -161,8 +161,18 @@ without this plugin. The gate can add a prompt; it never removes one.
 globs are never gated and never invoke the hook at all. Widen or narrow it by editing
 that matcher; it is your `settings.json`, not the plugin's.
 
-**The panel** leads with Claude's own description of what the command is for, then the
-command itself, then the cwd and session. Three answers: **Allow once**, **Always
+**The panel** leads with the thing being authorised — the command, or for a path tool
+the path *and the content it would write* — because the description below it and the
+"Claude says" line are both written by the model whose action you are approving, and
+neither should caption it from above. Anything too long to fit is clipped with an
+explicit marker rather than silently cut. The presence line appears only while a single
+session is running, since it carries no session id and could otherwise describe a
+different session's work. Then the cwd and session.
+
+Note that **Always allow** on a `Write` or `Edit` keys on the *path*, not the content:
+you are approving "Claude may write this file", and a later write of different bytes to
+the same path will not ask again. Bash keys on the exact command string, so it has no
+such reach. Three answers: **Allow once**, **Always
 allow** (appends to the allowlist), **Deny**. It opens itself when a request arrives and
 closes when you answer; opening it by hand shows whatever is pending, or an empty state
 when nothing is:

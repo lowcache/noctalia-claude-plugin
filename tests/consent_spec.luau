@@ -18,6 +18,7 @@ end
 
 local function reset()
   __files = {}
+  __raw = {}
   __cmds = {}
   __state = {}
   __tree = nil
@@ -115,5 +116,85 @@ contains("expired request drops to the empty state", __rendered(), "Nothing is w
 local before = __renders
 update()
 expect("idle tick does not re-render", __renders, before)
+
+-- ── what is being authorised leads ───────────────────────────────────────────
+-- The description and the presence line are both written by the model whose action
+-- is being approved. Neither may caption the command from above it.
+reset()
+__put("A", req())
+__queue("A")
+onOpen("A")
+local i_cmd, i_desc = __index_of("npm test"), __index_of("Run the test suite")
+expect("command is rendered above the model's description",
+  i_cmd > 0 and i_desc > 0 and i_cmd < i_desc, true)
+
+-- ── a truncated command says so ──────────────────────────────────────────────
+reset()
+local long = ""
+for i = 1, 200 do long = long .. "line" .. i .. " && " end
+__put("A", req({ command = long }))
+__queue("A")
+onOpen("A")
+contains("an over-long command is marked as clipped", __rendered(), "truncated")
+
+reset()
+__put("A", req())
+__queue("A")
+onOpen("A")
+absent("a short command is not marked as clipped", __rendered(), "truncated")
+
+-- ── path tools show what would be written ────────────────────────────────────
+-- The path alone is not informed consent: "Write ~/.bashrc" authorises any bytes.
+reset()
+__put("A", req({ tool = "Write", command = "", path = "/home/u/.bashrc",
+                 key = "Write:/home/u/.bashrc", content = "export EVIL=1\n" }))
+__queue("A")
+onOpen("A")
+contains("the path is shown", __rendered(), "/home/u/.bashrc")
+contains("and so is the content", __rendered(), "export EVIL=1")
+
+-- ── the agent's own words are shown only when unambiguous ────────────────────
+-- Presence is a rollup-level fact with no session attribution, so it may only be
+-- shown when a single session is running and it can refer to nothing else.
+reset()
+__put("A", req())
+__queue("A")
+__state["claude.pulse"] = { count = 1, message = "tidying the build dir" }
+onOpen("A")
+contains("single session: the stated intent is shown", __rendered(), "tidying the build dir")
+local i_said = __index_of("tidying the build dir")
+expect("and it sits below the command", i_said > __index_of("npm test"), true)
+
+reset()
+__put("A", req())
+__queue("A")
+__state["claude.pulse"] = { count = 3, message = "tidying the build dir" }
+onOpen("A")
+absent("concurrent sessions: an unattributable claim is withheld",
+  __rendered(), "tidying the build dir")
+
+-- ── promote has a surface ────────────────────────────────────────────────────
+-- It was CLI-only, so switching consent_mode straight from learn to enforce in the
+-- settings skipped the one step that makes enforce bearable. The empty state is where
+-- someone looking for it will be.
+reset()
+__observations(94)
+onOpen(nil)
+contains("empty state names the waiting observations", __rendered(), "94")
+expect("and offers to fold them in", __click("Promote"), true)
+contains("which runs promote", __last_cmd(), "promote")
+
+reset()
+onOpen(nil)
+absent("no observations, no promote control", __rendered(), "Promote")
+expect("and nothing is dispatched", #__cmds, 0)
+
+-- A pending request is not the place for it: the question on screen is this command.
+reset()
+__observations(94)
+__put("A", req())
+__queue("A")
+onOpen("A")
+absent("promote is not offered over a live prompt", __rendered(), "Promote")
 
 done()

@@ -55,6 +55,12 @@ POLL = 0.075
 # Tools whose consent key is the path they touch rather than a command string.
 PATH_TOOLS = {"Write": "file_path", "Edit": "file_path", "NotebookEdit": "notebook_path"}
 
+# What a path tool would actually write, in the order the tools carry it. The panel
+# renders this: a path on its own is not informed consent, because approving
+# "Write ~/.bashrc" without the bytes is approving any bytes at all.
+CONTENT_FIELDS = ("content", "new_string", "new_source")
+CONTENT_LIMIT = 4000
+
 # The user has already told Claude Code not to ask in these modes.
 SILENT_MODES = {"bypassPermissions", "dontAsk"}
 
@@ -112,6 +118,15 @@ def _key(tool, tool_input):
     if field:
         return f"{tool}:{tool_input.get(field, '')}"
     return tool + ":" + json.dumps(tool_input, sort_keys=True)
+
+
+def _content(tool_input):
+    """The bytes a path tool proposes to write, clipped. Empty for everything else."""
+    for field in CONTENT_FIELDS:
+        value = tool_input.get(field)
+        if isinstance(value, str) and value:
+            return value[:CONTENT_LIMIT]
+    return ""
 
 
 def _allowed(key):
@@ -190,6 +205,7 @@ def _decide(rt, data, tool, key, tool_input):
         "key": key,
         "command": tool_input.get("command", ""),
         "path": tool_input.get("file_path") or tool_input.get("notebook_path", ""),
+        "content": _content(tool_input),
         "description": tool_input.get("description", ""),
         "cwd": data.get("cwd", ""),
         "session": str(data.get("session_id") or "").split("-")[0],

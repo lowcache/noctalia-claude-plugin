@@ -21,7 +21,10 @@
     "allow_always": "Always allow",
     "deny": "Deny",
     "fallthrough": "No answer here and Claude asks in the terminal instead, as usual.",
-    "said": "Claude says: {said}"
+    "said": "Claude says: {said}",
+    "truncated": "… truncated — read the full text in the terminal before approving.",
+    "promote_hint": "{count} observed commands are waiting to be allowlisted.",
+    "promote": "Promote observations"
   },
   "launcher": {
     "ask": "Ask Claude (one-shot)",

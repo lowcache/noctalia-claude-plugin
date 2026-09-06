@@ -324,6 +324,44 @@ class AcceptEdits(Harness):
         self.assertEqual(json.loads(got)["hookSpecificOutput"]["permissionDecision"], "deny")
 
 
+class Content(Harness):
+    """A path tool's bytes have to reach the panel, or the prompt shows a path and
+    calls that consent."""
+
+    def test_write_content(self):
+        self.assertEqual(consent._content({"content": "export EVIL=1"}), "export EVIL=1")
+
+    def test_edit_new_string(self):
+        self.assertEqual(consent._content({"new_string": "after"}), "after")
+
+    def test_notebook_new_source(self):
+        self.assertEqual(consent._content({"new_source": "import os"}), "import os")
+
+    def test_bash_has_none(self):
+        self.assertEqual(consent._content({"command": "ls"}), "")
+
+    def test_clipped(self):
+        got = consent._content({"content": "x" * (consent.CONTENT_LIMIT + 500)})
+        self.assertEqual(len(got), consent.CONTENT_LIMIT)
+
+    def test_request_carries_it(self):
+        self.set_mode("enforce")
+        seen = {}
+
+        def capture(s):
+            cdir = os.path.join(s.rt, "claude-companion", "consent")
+            with open(os.path.join(cdir, "toolu_01ABC.req")) as f:
+                seen.update(json.load(f))
+            s.write_response()
+
+        self.run_gate(hook_input(tool_name="Write",
+                                 tool_input={"file_path": "/home/u/.bashrc",
+                                             "content": "export EVIL=1"}),
+                      responder=capture)
+        self.assertEqual(seen["path"], "/home/u/.bashrc")
+        self.assertEqual(seen["content"], "export EVIL=1")
+
+
 class Dismiss(Harness):
     """Esc / click-outside: a response that carries no verdict, so the hook stops
     waiting instead of holding the tool call open for the rest of its deadline."""
