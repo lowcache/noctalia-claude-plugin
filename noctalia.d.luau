@@ -18,7 +18,7 @@ declare noctalia: {
 	formatTime: (any) -> string,
 	notify: (any, any?, any?) -> (),
 	notifyError: (any, any?) -> (),
-	runAsync: (string) -> (),
+	runAsync: (string) -> boolean,
 	runInTerminal: (string) -> (),
 	runStream: (string, (string) -> ()) -> (),
 	setUpdateInterval: (number) -> (),

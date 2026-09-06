@@ -155,4 +155,42 @@ expect("reverts to tool_start after ask dropped", snap.state, "tool_start")
 onIpc("session_end", "opus-4-8,0,0,0,0,gamma")
 expect("all sessions cleared after gamma session_end", __state["claude.pulse"].count, 0)
 
+-- ── consent request queue ────────────────────────────────────────────────────
+-- Claude issues tool calls in parallel, so consent requests arrive in batches. The
+-- slot this used to be dropped every request but the newest, leaving the rest with
+-- no surface until their deadlines expired.
+-- Report a missing queue as a failed expectation rather than an indexing crash, so
+-- the suite says which contract broke instead of dying on a nil.
+local function qlen()
+  local q = __state["claude.consent"]
+  if type(q) ~= "table" or type(q.ids) ~= "table" then return -1 end
+  return #q.ids
+end
+
+__state["claude.consent"] = nil
+onIpc("consent_request", "reqA,alpha")
+expect("first request is the head", __state["claude.consent"].id, "reqA")
+expect("queue has one", qlen(), 1)
+
+onIpc("consent_request", "reqB,alpha")
+local q = __state["claude.consent"]
+expect("second request does not evict the first", q.id, "reqA")
+expect("queue has both", qlen(), 2)
+expect("oldest first", q.ids[1], "reqA")
+expect("newest last", q.ids[2], "reqB")
+
+-- A re-dispatch of the same id must not queue it twice.
+onIpc("consent_request", "reqA,alpha")
+q = __state["claude.consent"]
+expect("re-dispatch does not duplicate", qlen(), 2)
+
+-- Bounded: a runaway producer must not grow this without limit.
+for i = 1, 40 do onIpc("consent_request", "flood" .. i .. ",alpha") end
+expect("queue is bounded", qlen(), 16)
+
+-- An id-less payload is ignored rather than queued as an empty entry.
+local before = qlen()
+onIpc("consent_request", ",alpha")
+expect("empty id is ignored", qlen(), before)
+
 done()

@@ -28,10 +28,15 @@ local PAD = 14
 local ERROR_RGB = "#FF4D1F"
 
 local current = nil -- request id this panel is currently showing
+local answered = {} -- ids already replied to, while their request file is cleaned up
+local render        -- forward declaration: answer() advances to the next prompt
 
 local function shq(s)
   return "'" .. tostring(s):gsub("'", "'\\''") .. "'"
 end
+
+-- Double-quoted so $HOME still expands, unlike shq. Fixed trusted strings only.
+local function dq(s) return '"' .. tostring(s):gsub('"', '\\"') .. '"' end
 
 -- No guessed fallback: without XDG_RUNTIME_DIR there is no request to read, and a
 -- guessed uid path would read some other user's directory. Same stance as the hook.
@@ -63,17 +68,40 @@ local function read_request(id)
   return data
 end
 
--- Answer, then get out of the way. The hook is holding a tool call open on the other
--- side of this click, so the panel closes immediately rather than lingering on a
--- resolved request.
-local function answer(id, choice)
-  if not safe_id(id) then return end
-  noctalia.runAsync("python3 " .. HOOK .. " reply " .. shq(id) .. " " .. choice)
-  noctalia.runAsync("noctalia msg panel-close " .. shq(SELF))
-  current = nil
+-- The service queues every outstanding request. An id whose request file is gone was
+-- answered or timed out; `answered` covers the gap between our reply and the hook
+-- removing the file, so a just-answered prompt is never offered again.
+local function next_pending()
+  local snap = noctalia.state.get and noctalia.state.get(KEY)
+  if type(snap) ~= "table" then return nil, nil end
+  local ids = type(snap.ids) == "table" and snap.ids or { snap.id }
+  for _, id in ipairs(ids) do
+    if safe_id(id) and not answered[id] then
+      local req = read_request(id)
+      if req then return id, req end
+    end
+  end
+  return nil, nil
 end
 
-local function render(id, req)
+-- Answer, then move on. Claude issues tool calls in parallel, so a batch of prompts is
+-- ordinary: closing on the first answer would leave the rest with no surface, stalled
+-- until their deadlines. Close only once nothing is left.
+local function answer(id, choice)
+  if not safe_id(id) then return end
+  noctalia.runAsync("python3 " .. dq(HOOK) .. " reply " .. shq(id) .. " " .. choice)
+  answered[id] = true
+  current = nil
+  local nid, nreq = next_pending()
+  if nid then
+    current = nid
+    render(nid, nreq)
+    return
+  end
+  noctalia.runAsync("noctalia msg panel-close " .. shq(SELF))
+end
+
+function render(id, req)
   local rows = {}
 
   if not req then
@@ -165,23 +193,40 @@ end
 -- `panel-toggle …:consent` still shows a pending prompt.
 function onOpen(context)
   panel.setWantsSecondTicks(true) -- host stops ticks on close, re-arms on reopen
-  local id = context
-  if not safe_id(id) then
-    local snap = noctalia.state.get and noctalia.state.get(KEY)
-    id = (type(snap) == "table") and snap.id or nil
+  answered = {}
+  local id, req = nil, nil
+  if safe_id(context) then
+    req = read_request(context)
+    if req then id = context end
   end
-  current = safe_id(id) and id or nil
-  render(current, current and read_request(current) or nil)
+  if not req then id, req = next_pending() end
+  current = id
+  render(id, req)
+end
+
+-- Esc and click-outside are this plugin's dismiss idiom, but a dismissed prompt used
+-- to leave the hook polling for its full 110s with the tool call still blocked. Say
+-- "not here" instead: the hook falls straight through to Claude Code's own prompt.
+-- answer() clears `current` before its panel-close lands, so a click never lands here.
+function onClose()
+  -- Everything still outstanding loses its surface when the panel goes, so answer
+  -- "not here" for all of it rather than leaving those calls to time out.
+  while true do
+    local id = next_pending()
+    if not id then break end
+    noctalia.runAsync("python3 " .. dq(HOOK) .. " reply " .. shq(id) .. " dismiss")
+    answered[id] = true
+  end
+  current = nil
 end
 
 -- Re-poll only while a request is showing: if the hook hit its deadline and cleaned
 -- up, the request file vanishes and the panel drops to its empty state rather than
 -- offering buttons that would answer nothing.
 function update()
-  if not current then return end
-  local req = read_request(current)
-  if not req then
-    current = nil
-    render(nil, nil)
-  end
+  if current and read_request(current) then return end
+  local id, req = next_pending()
+  if id == current then return end -- both nil: nothing pending, nothing to repaint
+  current = id
+  render(id, req)
 end

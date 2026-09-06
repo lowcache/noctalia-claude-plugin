@@ -137,19 +137,27 @@ Set `consent_mode` in the plugin's settings:
 | `enforce` | Anything not already allowlisted opens the consent panel and waits. |
 
 **Start in `learn` for a few days of normal work.** It writes one line per gated tool
-call to `$XDG_RUNTIME_DIR/claude-companion/learn.jsonl`, which is how the allowlist
-gets seeded from traffic you actually produce instead of from anyone's guess about
-what is safe. When it has seen enough:
+call to `$XDG_STATE_HOME/noctalia/claude-companion/learn.jsonl`, which is how the
+allowlist gets seeded from traffic you actually produce instead of from anyone's
+guess about what is safe. It sits beside the allowlist in durable state, not on the
+runtime tmpfs, so a multi-day run survives the logouts it will certainly span.
+When it has seen enough:
 
 ```sh
 python3 hooks/consent.py promote   # fold every observed command into the allowlist
 ```
 
-Then switch to `enforce`. The commands you already run are silent from the first
-enforced session; only something new stops to ask.
+`promote` is CLI-only and has no surface in the shell, so switching `consent_mode`
+straight from `learn` to `enforce` in the settings skips it — and every command you
+have ever run then stops to ask. Run it first.
+
+Then switch to `enforce`. **What the allowlist buys you is that those commands stop
+opening the panel** — it is not a grant of permission. The hook returns no decision
+for them, so Claude Code applies its own permission rules exactly as it would
+without this plugin. The gate can add a prompt; it never removes one.
 
 **What gets gated.** Only the mutating tools — the matcher in
-`hooks/settings.snippet.json` is `Bash|Write|Edit|NotebookEdit`. Reads, greps and
+`hooks/settings.snippet.json` is `^(Bash|Write|Edit|NotebookEdit)$`. Reads, greps and
 globs are never gated and never invoke the hook at all. Widen or narrow it by editing
 that matcher; it is your `settings.json`, not the plugin's.
 

@@ -24,6 +24,8 @@ SUITES=(
   "tests/orb_prelude.luau:orb.luau:tests/orb_spec.luau"
   "tests/answer_prelude.luau:answer.luau:tests/answer_spec.luau"
   "tests/sessions_prelude.luau:sessions.luau:tests/sessions_spec.luau"
+  "tests/consent_prelude.luau:consent.luau:tests/consent_spec.luau"
+  "tests/ask_prelude.luau:ask.luau:tests/ask_spec.luau"
 )
 
 tmp="$(mktemp)"
