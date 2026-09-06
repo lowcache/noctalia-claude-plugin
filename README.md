@@ -203,6 +203,42 @@ at 0600, and each response must echo a nonce from its request. Without
 > meant to persist. On an impermanent root, make sure that path is on your persist list
 > or you will re-approve everything after each boot.
 
+## IPC
+
+Every entry id, and the exact command that reaches it. The plugin id is
+`lowcache/claude-companion`; the part after the `:` is the entry id from `plugin.toml`.
+
+Panels — `answer`, `sessions`, `consent`, `ask`:
+
+```sh
+noctalia msg panel-toggle lowcache/claude-companion:answer
+noctalia msg panel-toggle lowcache/claude-companion:sessions
+noctalia msg panel-toggle lowcache/claude-companion:consent
+noctalia msg panel-toggle lowcache/claude-companion:ask
+```
+
+The pulse aggregator service — `pulse-svc`. Eight lifecycle events plus three control
+events; payload is a single space-free CSV. Full contract in [PROTOCOL.md](PROTOCOL.md):
+
+```sh
+noctalia msg plugin lowcache/claude-companion:pulse-svc all <event> [payload]
+noctalia msg plugin lowcache/claude-companion:pulse-svc all needs_attention   # bar icon -> red bell
+noctalia msg plugin lowcache/claude-companion:pulse-svc all idle              # back to robot
+```
+
+The quick-ask backend service — `claude-ask`. A bare poke; the question is written to
+`$XDG_RUNTIME_DIR/claude-companion/ask` first, because a payload cannot contain spaces:
+
+```sh
+noctalia msg plugin lowcache/claude-companion:claude-ask all ask
+```
+
+Launcher provider — id `claude`, **prefix `claude`**. Type `claude ` in the Noctalia
+launcher to start a session, or `claude ? <question>` for a quick-ask.
+
+The bar widget `pulse` and the desktop widget `orb` are pure subscribers to the
+`claude.pulse` shared-state key and take no IPC of their own.
+
 ## Wiring up other agents
 
 None of this is Claude-specific under the hood. The pulse speaks a plain event format and doesn't care who's talking — any agent, CI job, or shell script that can run a command on its own lifecycle can light up the same bar. [PROTOCOL.md](PROTOCOL.md) has the full eight-event vocabulary, the CSV payload, session semantics, and the adapter contract. The reference emitter, `hooks/pulse-emit`, is plain POSIX sh and needs nothing but `noctalia` on your PATH:
@@ -213,9 +249,26 @@ hooks/pulse-emit turn_end mysess gpt-5 12000 800
 hooks/pulse-emit session_end mysess
 ```
 
-## Rough edges
+## Notes
 
-A few things worth knowing before they surprise you:
+**What it writes.** Runtime files live in `$XDG_RUNTIME_DIR/claude-companion/` (tmpfs,
+0700, per-user): the consent `mode` mirror, the `presence` message, the `ask` handoff, and
+`consent/<id>.req|.res` while a prompt is outstanding. Durable state lives in
+`$XDG_STATE_HOME/noctalia/claude-companion/` (0600): `allow.jsonl` and `learn.jsonl` for the
+consent gate. The shim's memory tool also appends to `~/.memory/inbox/`.
+
+**What it spawns.** `noctalia msg …` for every dispatch; `python3` for the lifecycle hooks,
+the consent gate and the MCP shim; `notify-send` for toasts; `claude -p` for quick-ask only.
+The shim reads the compositor through `niri msg -j`, `hyprctl -j` or `swaymsg -t`, and media
+through `playerctl` — all read-only queries.
+
+**Network.** The plugin makes none. Quick-ask spawns `claude -p`, which talks to Anthropic's
+API exactly as Claude Code does from a terminal.
+
+**Compositors.** Everything except the shim's window/workspace tools is compositor-agnostic.
+Those tools support niri, Hyprland and Sway, detected from the running socket.
+
+**Rough edges.** A few things worth knowing before they surprise you:
 
 - Plugin panels render at `Layer::Top`, so an overlay window — a notification, a quake terminal, a polkit prompt — can sit on top of the answer panel. The answer's still there; clear the overlay and you'll see it. There's an upstream ask in for panel layer control.
 - Eight-digit hex alpha is ignored by bar widgets — brightness is done by scaling RGB toward black. (Earlier builds didn't fire `state.watch` on bars, so the pulse polled; the Noctalia 5 beta fires it, so the bar dot is now event-driven like the orb.)
