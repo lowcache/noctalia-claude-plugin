@@ -8,7 +8,8 @@
 
 -- 0. Load & API assertions
 expect("service defines global onIpc", type(onIpc), "function")
-expect("service defines NO update function", type(update), "nil")
+expect("service defines the liveness sweep", type(update), "function")
+expect("sweep runs every 5 s, not the 1 s default", __interval, 5000)
 expect("service subscribes to claude.state watch", type(__watch["claude.state"]), "function")
 
 local snap = __state["claude.pulse"]
@@ -192,5 +193,231 @@ expect("queue is bounded", qlen(), 16)
 local before = qlen()
 onIpc("consent_request", ",alpha")
 expect("empty id is ignored", qlen(), before)
+
+-- 9. Liveness: a pid-tagged session is retired once its Claude process is gone.
+-- /proc/<pid>/stat: starttime is field 22, counted from the LAST ')'.
+local function stat(pid, start, comm)
+  return pid .. " (" .. (comm or ".claude-wrapped") .. ") S 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 " .. start .. " 23 24\n"
+end
+local function has(sid)
+  for _, s in ipairs(__state["claude.pulse"].sessions) do
+    if s.sid == sid then return true end
+  end
+  return false
+end
+
+__files["/proc/4242/stat"] = stat(4242, "1000")
+__files["/proc/4343/stat"] = stat(4343, "2000", "we (ird) name")
+onIpc("turn_start", "opus-5,1,1,0,0,live1,4242")
+onIpc("turn_start", "opus-5,1,1,0,0,dead1,4343")
+onIpc("turn_start", "opus-5,1,1,0,0,nopid1")
+onIpc("turn_start", "opus-5,1,1,0,0,unseen1,4444") -- no /proc entry at first sight
+
+local snap0 = __state["claude.pulse"]
+update()
+expect("a tick with every process alive publishes nothing", __state["claude.pulse"], snap0)
+
+__files["/proc/4343/stat"] = nil
+update()
+expect("dead process -> session retired", has("dead1"), false)
+expect("live session kept", has("live1"), true)
+expect("session without a pid is never swept", has("nopid1"), true)
+expect("pid unreadable at first sight is never swept", has("unseen1"), true)
+
+__files["/proc/4242/stat"] = stat(4242, "9999")
+update()
+expect("reused pid (new start time) -> session retired", has("live1"), false)
+
+-- a pid that was unreadable at first sight must not arm the sweep when a process
+-- later shows up under that number
+__files["/proc/4444/stat"] = stat(4444, "7")
+update()
+expect("a pid seen only later does not retire the session", has("unseen1"), true)
+
+-- pid reuse is still caught when comm holds ") " (field counting from the last ')')
+__files["/proc/4545/stat"] = stat(4545, "500", "a) b (c")
+onIpc("turn_start", "opus-5,1,1,0,0,odd1,4545")
+update()
+expect("odd comm, same process -> kept", has("odd1"), true)
+__files["/proc/4545/stat"] = stat(4545, "501", "a) b (c")
+update()
+expect("odd comm, reused pid -> retired", has("odd1"), false)
+
+-- claude --resume brings the same session back in a new process
+__files["/proc/5000/stat"] = stat(5000, "300")
+__files["/proc/5001/stat"] = stat(5001, "301")
+onIpc("idle", "opus-5,1,1,0,0,res1,5000")
+onIpc("turn_start", "opus-5,1,1,0,0,res1,5001")
+__files["/proc/5000/stat"] = nil
+update()
+expect("resumed session follows its new process", has("res1"), true)
+
+__reads = {}
+onIpc("idle", "opus-5,1,1,0,0,evil1,../../etc/passwd")
+onIpc("idle", "opus-5,1,1,0,0,evil2,123456789012")
+update()
+local read_log = table.concat(__reads, "\n")
+contains("the sweep did read procfs", read_log, "/proc/5001/stat")
+absent("a non-numeric pid never reaches a path", read_log, "..")
+absent("an oversized pid is not read", read_log, "123456789012")
+expect("hostile-pid sessions are still tracked", has("evil1") and has("evil2"), true)
+
+-- 10. Hookless detection from <config>/sessions/<pid>.json
+local DIR = "~/.claude/sessions"
+local function sfile(sid, extra)
+  return '{"sessionId":"' .. sid .. '","kind":"interactive","entrypoint":"cli"' .. (extra or "") .. "}"
+end
+local function row(sid)
+  for _, s in ipairs(__state["claude.pulse"].sessions) do
+    if s.sid == sid then return s end
+  end
+  return nil
+end
+__dirs[DIR] = { "7001.json", "7002.json", "7003.json", "7004.json", "7005.json", "7006.json",
+  "7007.json", "7008.json", "7011.json", "notes.txt", "123456789.json" }
+__files["/proc/7011/stat"] = stat(7011, "100")
+__files[DIR .. "/7011.json"] = sfile("kkk11111-x", ',"status":"busy"') -- no procStart: identity unprovable
+__files["/proc/7001/stat"] = stat(7001, "100")
+__files["/proc/7002/stat"] = stat(7002, "100")
+__files["/proc/7003/stat"] = stat(7003, "100")
+__files["/proc/7005/stat"] = stat(7005, "999")
+__files["/proc/7006/stat"] = stat(7006, "100")
+__files["/proc/7007/stat"] = stat(7007, "100")
+__files["/proc/7008/stat"] = stat(7008, "100")
+__files[DIR .. "/7001.json"] = sfile("aaa11111-x-y", ',"procStart":"100","status":"busy"')
+__files[DIR .. "/7002.json"] = sfile("bbb22222-x-y", ',"procStart":"100","status":"waiting"')
+__files[DIR .. "/7003.json"] = '{"sessionId":"ccc33333-x","kind":"interactive","entrypoint":"sdk-cli","status":"busy"}'
+__files[DIR .. "/7004.json"] = sfile("ddd44444-x", ',"status":"busy"') -- no /proc entry: SIGKILLed
+__files[DIR .. "/7005.json"] = sfile("eee55555-x", ',"procStart":"100","status":"busy"') -- pid reused
+__files[DIR .. "/7006.json"] = '{"sessionId":"fff66666-x","kind":"bg","status":"busy"}'
+__files[DIR .. "/7007.json"] = "{not json"
+__files[DIR .. "/7008.json"] = sfile("ggg77777-x", ',"procStart":"100"') -- older Claude Code: no status field
+update()
+expect("busy file -> detected as working", row("aaa11111") and row("aaa11111").state, "turn_start")
+expect("detected session is flagged hookless", row("aaa11111") and row("aaa11111").nohooks, true)
+expect("waiting file -> needs_attention", row("bbb22222") and row("bbb22222").state, "needs_attention")
+expect("claude -p / SDK sessions are skipped", row("ccc33333"), nil)
+expect("a file whose process is gone is skipped", row("ddd44444"), nil)
+expect("a file whose pid was reused is skipped", row("eee55555"), nil)
+expect("non-interactive kinds are skipped", row("fff66666"), nil)
+expect("no status field -> idle", row("ggg77777") and row("ggg77777").state, "idle")
+expect("a file without procStart is skipped", row("kkk11111"), nil)
+expect("rollup picks up the detected needs-you", __state["claude.pulse"].state, "needs_attention")
+
+local snap1 = __state["claude.pulse"]
+update()
+expect("an unchanged scan publishes nothing", __state["claude.pulse"], snap1)
+
+__files[DIR .. "/7002.json"] = sfile("bbb22222-x-y", ',"procStart":"100","status":"idle"')
+update()
+expect("file status drives a hookless session", row("bbb22222").state, "idle")
+
+-- a hook event takes over: hooks win, the flag drops, file status stops mattering
+onIpc("tool_start", "opus-5,5,5,0,0,aaa11111")
+expect("hooked session loses the hookless flag", row("aaa11111").nohooks, nil)
+__files[DIR .. "/7001.json"] = sfile("aaa11111-x-y", ',"procStart":"100","status":"idle"')
+update()
+expect("file status no longer overrides a hooked session", row("aaa11111").state, "tool_start")
+-- and the pid from the file arms liveness for a hook that sent none
+__files["/proc/7001/stat"] = nil
+update()
+expect("pid-less hooked session retired once its detected process dies", row("aaa11111"), nil)
+
+-- hooked first with no pid (older hooks), detected later: the file's pid arms liveness
+onIpc("idle", "opus-5,1,1,0,0,hhh88888")
+__files["/proc/7009/stat"] = stat(7009, "100")
+__files[DIR .. "/7009.json"] = sfile("hhh88888-x", ',"procStart":"100","status":"idle"')
+table.insert(__dirs[DIR], "7009.json")
+update()
+expect("hooked session is not flagged hookless when detected", row("hhh88888").nohooks, nil)
+__files["/proc/7009/stat"] = nil
+update()
+expect("detection arms liveness for a pid-less hooked session", row("hhh88888"), nil)
+
+-- clean exit: file gone -> a detection-only session goes with it
+__files[DIR .. "/7008.json"] = nil
+for i, n in ipairs(__dirs[DIR]) do
+  if n == "7008.json" then table.remove(__dirs[DIR], i) break end
+end
+update()
+expect("detection-only session retires when its file goes", row("ggg77777"), nil)
+
+-- session_end while the exiting process still has its file: not re-detected
+onIpc("session_end", ",,,,,bbb22222")
+update()
+expect("an ended session is not re-detected while it exits", row("bbb22222"), nil)
+-- resumed in a new process while the old file is still around (the Retire-then-resume path)
+__files["/proc/7010/stat"] = stat(7010, "200") -- started after the ended one
+__files[DIR .. "/7010.json"] = sfile("bbb22222-x-y", ',"procStart":"200","status":"busy"')
+local saved_dir = __dirs[DIR]
+__dirs[DIR] = { "7010.json", "7002.json" }
+update()
+update()
+expect("a resume in a new process is detected despite the ended flag", row("bbb22222") and row("bbb22222").state, "turn_start")
+onIpc("session_end", ",,,,,bbb22222")
+__files[DIR .. "/7010.json"] = nil
+__dirs[DIR] = saved_dir
+__dirs[DIR] = { "7001.json" }
+update()
+__dirs[DIR] = { "7001.json", "7002.json" }
+update()
+expect("the same session resumed later is detected again", row("bbb22222") ~= nil, true)
+
+__config["detect_sessions"] = false
+update()
+expect("turning detection off drops detection-only sessions", row("bbb22222"), nil)
+__config["detect_sessions"] = nil
+
+-- 11. Newest signal wins: a file status written after the last hook event corrects
+-- what hooks never report. Hook times come from nowMs, file times from statusUpdatedAt.
+__files["/proc/7020/stat"] = stat(7020, "100")
+local function zfile(status, at)
+  __files[DIR .. "/7020.json"] = sfile("zzz99999-x", ',"procStart":"100","status":"' .. status .. '"'
+    .. (at and (',"statusUpdatedAt":' .. at) or ""))
+end
+__dirs[DIR] = { "7020.json" }
+__now = 1000
+onIpc("tool_start", "opus-5,1,1,0,0,zzz99999")
+zfile("idle", 900)
+update()
+expect("a file status older than the last hook is ignored", row("zzz99999").state, "tool_start")
+zfile("idle", 2000)
+update()
+expect("Esc interrupt: newer idle file ends a stuck working state", row("zzz99999").state, "idle")
+expect("the corrected session stays hooked", row("zzz99999").nohooks, nil)
+
+__now = 3000
+onIpc("turn_start", "opus-5,1,1,0,0,zzz99999")
+update()
+expect("a newer hook beats the older idle file", row("zzz99999").state, "turn_start")
+
+onIpc("tool_start", "opus-5,1,1,0,0,zzz99999")
+zfile("waiting", 4000)
+update()
+expect("a question pending behind a tool call -> needs you", row("zzz99999").state, "needs_attention")
+
+__now = 5000
+onIpc("tool_start", "opus-5,1,1,0,0,zzz99999")
+zfile("busy", 6000)
+update()
+expect("same class keeps the hook's detail (tool, not thinking)", row("zzz99999").state, "tool_start")
+
+__now = 7000
+onIpc("turn_end", "opus-5,1,1,0,0,zzz99999")
+zfile("idle", 8000)
+update()
+expect("resting stays turn_end when the file says idle", row("zzz99999").state, "turn_end")
+
+__now = 9000
+onIpc("tool_start", "opus-5,1,1,0,0,zzz99999")
+zfile("idle", nil)
+update()
+expect("no statusUpdatedAt -> no correction", row("zzz99999").state, "tool_start")
+
+zfile("idle", 10000)
+__config["detect_sessions"] = false
+update()
+expect("detection off -> no correction either", row("zzz99999").state, "tool_start")
+__config["detect_sessions"] = nil
 
 done()

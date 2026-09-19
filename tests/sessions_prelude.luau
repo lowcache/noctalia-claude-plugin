@@ -30,15 +30,21 @@ panel = {
   setWantsSecondTicks = function(v) __ticks = v end,
 }
 
-__async = {}    -- every runAsync command, in order
+__async = {}    -- every shell-string runAsync command, in order
+__spawn = {}    -- every argv-table runAsync call: { argv = {...}, cb = fn }
 __state = {}
 noctalia = {
   -- Resolved from translations/en.json by tests/gen_tr_fixture.py.
   tr = __tr,
-  runAsync = function(cmd)
-    __async[#__async + 1] = cmd
+  runAsync = function(cmd, cb)
+    if type(cmd) == "table" then
+      __spawn[#__spawn + 1] = { argv = cmd, cb = cb }
+    else
+      __async[#__async + 1] = cmd
+    end
     return true
   end,
+  pluginDir = function() return "/plug" end,
   state = {
     get = function(key) return __state[key] end,
     set = function(key, value) __state[key] = value end,

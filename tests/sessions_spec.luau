@@ -90,4 +90,57 @@ update()
 contains("quick-ask session listed", text_of(__tree), "ask")
 expect("quick-ask session is retirable", #collect(__tree, "button"), 1)
 
+-- 7b. A session found by detection alone is tagged, and the tag leaves with the hooks
+local prev_pulse = __state["claude.pulse"]
+__state["claude.pulse"] = {
+  state = "idle", count = 2,
+  sessions = {
+    { sid = "seen", state = "idle", model = "?", tin = 0, tout = 0, cr = 0, nohooks = true },
+    { sid = "hooked", state = "idle", model = "?", tin = 0, tout = 0, cr = 0 },
+  },
+}
+update()
+contains("detection-only row says it has no hooks", text_of(__tree), "seen · " .. __tr("state.word.idle") .. " · " .. __tr("sessions.no_hooks"))
+absent("a hooked row is not tagged", text_of(__tree), "hooked · " .. __tr("state.word.idle") .. " · " .. __tr("sessions.no_hooks"))
+__state["claude.pulse"].sessions[1].nohooks = nil
+update()
+absent("the tag leaves once hooks fire", text_of(__tree), __tr("sessions.no_hooks"))
+__state["claude.pulse"] = prev_pulse
+update()
+
+-- 8. Hook health: every open runs the installer's check, argv-form (no shell)
+local function argv(i) return __spawn[i] and table.concat(__spawn[i].argv, " ") end
+local function exited(i, code) __spawn[i].cb({ exitCode = code, stdout = "", stderr = "", timedOut = false }) end
+__spawn = {}
+onOpen(nil)
+expect("open runs the hook check", argv(1), "python3 /plug/hooks/install.py --check")
+absent("no warning before the check answers", text_of(__tree), __tr("sessions.hooks_broken"))
+exited(1, 0)
+absent("healthy hooks show no warning", text_of(__tree), __tr("sessions.hooks_broken"))
+expect("healthy hooks add no repair button", #collect(__tree, "button"), 1)
+
+onOpen(nil)
+exited(2, 1)
+contains("failed check warns", text_of(__tree), __tr("sessions.hooks_broken"))
+local buttons = collect(__tree, "button")
+expect("warning carries a repair button", buttons[1].props.text, __tr("sessions.hooks_repair"))
+expect("repair is the call to action", buttons[1].props.variant, "primary")
+buttons[1].props.onClick()
+expect("repair runs the installer without --check", argv(3), "python3 /plug/hooks/install.py")
+exited(3, 0)
+contains("successful repair says so", text_of(__tree), __tr("sessions.hooks_repaired"))
+absent("and drops the warning", text_of(__tree), __tr("sessions.hooks_broken"))
+
+onOpen(nil)
+exited(4, 1)
+collect(__tree, "button")[1].props.onClick()
+exited(5, 2)
+contains("failed repair points at the manual command", text_of(__tree),
+  __tr("sessions.hooks_repair_failed", { cmd = "python3 /plug/hooks/install.py" }))
+
+onOpen(nil)
+__spawn[6].cb({ exitCode = -1, stdout = "", stderr = "", timedOut = true })
+contains("a timed-out check leaves the last note alone", text_of(__tree),
+  __tr("sessions.hooks_repair_failed", { cmd = "python3 /plug/hooks/install.py" }))
+
 done()

@@ -4,10 +4,41 @@
 
 __state = {}
 __watch = {}
+__files = {}      -- path -> contents served by readFile (the fake /proc)
+__reads = {}      -- every path readFile was asked for, in order
+__interval = nil  -- last setUpdateInterval value
+__dirs = {}       -- dir -> list of names served by listDir
+__config = {}     -- setting key -> value served by getConfig
+__now = 0         -- epoch ms served by nowMs
 
 noctalia = {
   -- Resolved from translations/en.json by tests/gen_tr_fixture.py.
   tr = __tr,
+  readFile = function(path)
+    __reads[#__reads + 1] = path
+    local v = __files[path]
+    if v == nil then return nil, "cannot open file" end
+    return v
+  end,
+  setUpdateInterval = function(ms) __interval = ms end,
+  listDir = function(dir)
+    if __dirs[dir] == nil then return nil, "not a directory" end
+    return __dirs[dir]
+  end,
+  getConfig = function(key) return __config[key] end,
+  nowMs = function() return __now end,
+  -- Flat objects of string/number fields only (the session files); raises on
+  -- anything else, as the real decoder does on corrupt input.
+  json = {
+    decode = function(raw)
+      if type(raw) ~= "string" or not raw:match("^%s*{.*}%s*$") then error("invalid json") end
+      local t = {}
+      for k, v in raw:gmatch('"([%w_]+)"%s*:%s*("?[^,"}]*"?)') do
+        t[k] = v:sub(1, 1) == '"' and v:sub(2, -2) or tonumber(v)
+      end
+      return t
+    end,
+  },
   state = {
     watch = function(key, cb) __watch[key] = cb end,
     get = function(key) return __state[key] end,

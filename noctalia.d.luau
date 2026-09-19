@@ -4,13 +4,15 @@
 -- the two tools want the same knowledge in different formats, and both are needed —
 -- selene catches an undeclared global, luau-analyze catches a bad call shape.
 --
--- Pinned against Noctalia 5.0.0. Each entry kind sees only its own table at runtime
+-- Pinned against Noctalia 5.0.0; pluginDir and runAsync's argv/callback forms checked
+-- against the 5.0.1 source (luau_host.cpp). Each entry kind sees only its own table at runtime
 -- (a bar widget has no `panel`), which a flat declaration cannot express; plugin.toml
 -- stays the real contract for which entry gets what.
 
 declare noctalia: {
 	tr: (string, table?) -> string,
 	readFile: (string) -> string?,
+	listDir: ((string) -> {string}?)?,
 	expandPath: (string) -> string,
 	getenv: (string) -> string?,
 	getConfig: (string) -> any,
@@ -18,10 +20,12 @@ declare noctalia: {
 	formatTime: (any) -> string,
 	notify: (any, any?, any?) -> (),
 	notifyError: (any, any?) -> (),
-	runAsync: (string) -> boolean,
+	runAsync: (any, ((any) -> ())?, number?) -> boolean,
 	runInTerminal: (string) -> (),
 	runStream: (string, (string) -> ()) -> (),
 	setUpdateInterval: (number) -> (),
+	pluginDir: (() -> string?)?,
+	nowMs: (() -> number)?,
 	json: { decode: (string) -> any, encode: ((any) -> string)? },
 	string: { urlEncode: (string) -> string },
 	state: {

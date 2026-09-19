@@ -57,7 +57,7 @@ vocabulary. Glyph, accent color, and breath animation are widget-side concerns
 ## Payload
 
 ```
-model,in,out,cacheCreate,cacheRead,session
+model,in,out,cacheCreate,cacheRead,session[,pid]
 ```
 
 - `session` (field 6) is the only field that changes behavior: it keys the
@@ -69,6 +69,13 @@ model,in,out,cacheCreate,cacheRead,session
   The widget displays *input* as `in + cacheCreate` (full-rate work) and shows
   `cacheRead` separately. All-zero telemetry is fine — the burn line is simply
   omitted (`model` of `?` or zero in+out hides it).
+- `pid` (field 7, optional, digits only) is the agent process whose exit ends the
+  session. If the service can read `/proc/<pid>/stat` when the pid first arrives,
+  it retires the slot within ~5 s of that process exiting, or of the pid being
+  reused (its start time changes). Send it only when you can name that process
+  exactly: a wrapper that exits early (`timeout`, `env`, a shell) retires a live
+  session. Omit it from another host or PID namespace. Claude's adapter sends it
+  only when `~/.claude/sessions/<pid>.json` on the hook's ancestry names the session.
 - No commas or whitespace inside fields.
 
 **Minimum viable adapter:** fire bare events with just a session id —
@@ -81,9 +88,10 @@ work; you only lose the burn readout.
 - The service aggregates the **most urgent** state across all live slots (priority
   table above) into `claude.pulse`; widgets render this rollup and the tooltip lists
   every session, most recent first, with a Σ burn total.
-- `session_end` retires the slot. Nothing else does — a real session may sit
-  at `idle` or `turn_end` indefinitely and stays listed.
-- Because only the trailing `session` field is read for routing, a `session_end`
+- `session_end` retires the slot, and so does the liveness sweep once the `pid` a
+  slot's events carried has exited. Nothing else does — a session without a `pid`
+  may sit at `idle` or `turn_end` indefinitely and stays listed.
+- Because only the `session` field (6) is read for routing, a `session_end`
   whose payload populates *only* that field is a well-formed retire for one
   session and nothing else: `,,,,,<session>`. The `sessions` panel's Retire
   control emits exactly that, which is why manual retirement needs no new verb —
@@ -133,15 +141,19 @@ hooks/pulse-emit <event> [session] [model] [in] [out] [cacheCreate] [cacheRead]
 ```
 
 POSIX sh, no dependencies beyond `noctalia` on PATH. Omitted fields default to
-`?`/`0`; omitting `session` sends a bare (default-slot) event. Env:
-`PULSE_TARGET` overrides the dispatch id, `PULSE_DRYRUN=1` prints the command
-instead of running it. Examples:
+`?`/`0`; omitting `session` sends a bare (default-slot) event. A `session` of `-`
+reads hook JSON on stdin and uses its first `"session_id"` (Codex and other
+Claude-style hooks). Env: `PULSE_PID` adds the `pid` field (digits only — see
+Payload for when a pid is safe to send), `PULSE_TARGET` overrides the dispatch id,
+`PULSE_DRYRUN=1` prints the command instead of running it. Examples:
 
 ```sh
 pulse-emit turn_start mysess                 # state only
 pulse-emit turn_end mysess gpt-5 12000 800   # with burn figures
 pulse-emit session_end mysess                # retire the slot
 long_build && pulse-emit needs_attention ci  # non-agent uses work too
+pulse-emit tool_start - < hook.json          # session id from hook JSON
+PULSE_PID=$PPID pulse-emit turn_end aider-$PPID  # retire when that process exits
 ```
 
 ## Control events (not lifecycle)
@@ -227,9 +239,11 @@ emits it simply never raises a prompt. The same goes for `presence`.
 
 The headless `pulse-svc` **service** is the **single aggregator**; subscribers (the
 bar dot, the orb, or any future surface) never parse events themselves. On every
-event — never from a timer — it publishes a rollup snapshot to noctalia shared state
-under `claude.pulse` (top-level fields below, plus a `sessions` array of per-session
-`{sid,state,model,tin,tout,cr}` for multi-session tooltips):
+event, and on a 5 s tick only when the liveness sweep or session detection changed
+something, it publishes a rollup snapshot to noctalia shared state under
+`claude.pulse` (top-level fields below, plus a `sessions` array of per-session
+`{sid,state,model,tin,tout,cr,nohooks?}` for multi-session tooltips; `nohooks` is
+`true` for a session known only from Claude Code's session files, with no hook yet):
 
 ```lua
 { state = <most-urgent event name>,   -- "idle" when no sessions
