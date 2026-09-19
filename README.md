@@ -10,6 +10,23 @@ It works with other agents too: Gemini CLI, Codex, opencode and aider. See [Othe
 
 ![A quick question answered in the answer panel](assets/question.gif)
 
+## Plugin
+
+| Field | Value |
+| --- | --- |
+| ID | `lowcache/claude-companion` |
+| Entries | Bar widget: `pulse`; desktop widget: `orb`; panels: `answer`, `sessions`, `consent`, `ask`; services: `pulse-svc`, `claude-ask`; launcher provider: `claude` |
+| Launcher Prefix | `/claude` |
+
+## Requirements
+
+Noctalia 5 on **niri**, **Hyprland** or **Sway**; you only need the CLI for the compositor you run (`niri`, `hyprctl` or `swaymsg`).
+
+- `claude` — [Claude Code](https://claude.com/claude-code), the agent this visualizes. Optional if you drive the pulse from another agent.
+- `python3` — the hooks and the MCP shim. Standard library only.
+- `playerctl`, `nmcli`, `notify-send`, `ps` — used by the desktop tools Claude gets, each optional: without one, that tool reports nothing.
+- `tr`, `timeout` — used by `hooks/pulse-emit`, the emitter for other agents; it also needs `grep`, `sed` and `head` for its `-` mode.
+
 ## Install
 
 1. In Noctalia, open **Settings → Plugins → Browse Plugins**, find **Claude Companion** and click **Add to Noctalia**.
@@ -31,11 +48,9 @@ noctalia msg plugin lowcache/claude-companion:pulse-svc all needs_attention   # 
 noctalia msg plugin lowcache/claude-companion:pulse-svc all idle              # back to normal
 ```
 
-**Requirements:** Noctalia 5 on niri, Hyprland or Sway, Claude Code, and `python3`. The desktop tools Claude gets also use `playerctl`, `nmcli`, `notify-send` and `ps` when they're installed.
-
 Working on the plugin itself? See [DEVELOPMENT.md](https://github.com/lowcache/noctalia-claude-plugin/blob/main/DEVELOPMENT.md) for installing from a clone.
 
-## Use
+## Usage
 
 | Do this | Get this |
 | --- | --- |
@@ -58,13 +73,13 @@ noctalia msg panel-toggle lowcache/claude-companion:ask    # or: answer, session
 
 ## Settings
 
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Breath speed | 1.0 | How fast the pulse and orb breathe |
-| Bar dot glow floor | 0.45 | How dim the pulse gets between breaths |
-| Orb swell | 1.0 | How much the orb grows as it breathes |
-| Tool consent gate | Off | Approve Claude's tool calls from the desktop; see below |
-| Detect sessions without hooks | On | Show sessions from Claude Code's own session files |
+| Setting | Key | Type | Default | What it does |
+| --- | --- | --- | --- | --- |
+| Breath speed | `breath_speed` | double, 0.25–3.0 | 1.0 | How fast the pulse and orb breathe |
+| Bar dot glow floor | `pulse_glow_floor` | double, 0.0–0.9 | 0.45 | How dim the pulse gets between breaths |
+| Orb swell | `orb_swell` | double, 0.0–3.0 | 1.0 | How much the orb grows as it breathes |
+| Tool consent gate | `consent_mode` | off / learn / enforce | `off` | Approve Claude's tool calls from the desktop; see below |
+| Detect sessions without hooks | `detect_sessions` | bool | on | Show sessions from Claude Code's own session files |
 
 Colors follow your Noctalia theme.
 
@@ -83,6 +98,33 @@ Good to know:
 - If anything goes wrong, such as Noctalia not running or no answer within 110 seconds, Claude asks in the terminal as usual.
 - The allowlist is `~/.local/state/noctalia/claude-companion/allow.jsonl` (under `$XDG_STATE_HOME` if you set it). If your system wipes that folder at boot, add it to what you persist.
 
+## IPC
+
+Panels — `answer`, `sessions`, `consent`, `ask`:
+
+```sh
+noctalia msg panel-toggle lowcache/claude-companion:answer
+noctalia msg panel-toggle lowcache/claude-companion:sessions
+noctalia msg panel-toggle lowcache/claude-companion:consent
+noctalia msg panel-toggle lowcache/claude-companion:ask
+```
+
+The `pulse-svc` service takes the lifecycle events that drive the pulse. Eight lifecycle events and three control events, with a single space-free CSV payload; the full contract is in [PROTOCOL.md](PROTOCOL.md):
+
+```sh
+noctalia msg plugin lowcache/claude-companion:pulse-svc all <event> [payload]
+noctalia msg plugin lowcache/claude-companion:pulse-svc all needs_attention
+noctalia msg plugin lowcache/claude-companion:pulse-svc all idle
+```
+
+The `claude-ask` service takes one bare poke, used by the ask panel. The question goes to `$XDG_RUNTIME_DIR/claude-companion/ask` first, because a payload can't contain spaces:
+
+```sh
+noctalia msg plugin lowcache/claude-companion:claude-ask all ask
+```
+
+The `pulse` bar widget and the `orb` desktop widget only subscribe to shared state and take no IPC.
+
 ## Other agents
 
 The pulse understands a simple event format, so any agent that can run a command on its own events can drive it. `hooks/pulse-emit` sends those events:
@@ -95,14 +137,16 @@ pulse-emit session_end mysession
 
 Copy-paste setups for **Gemini CLI**, **Codex CLI**, **opencode** and **aider** are in [PROTOCOL.md](PROTOCOL.md#ready-made-adapters), along with the full event format.
 
-## What it touches
+## Notes
+
+### What it touches
 
 - **Files it writes:** temporary files under `$XDG_RUNTIME_DIR` (`/tmp` if that's unset), the consent allowlist and learn log in `~/.local/state/noctalia/claude-companion/`, and hook entries in `~/.claude/settings.json`, only when you run the installer.
 - **Files it reads:** Claude Code's session files in `~/.claude/sessions/`, and each session's transcript for token counts.
 - **What Claude can do through it:** sessions started with `/claude` can read your windows, workspaces, media, network, battery and running processes, and can focus or move windows, switch workspaces, send notifications and change the theme or wallpaper.
 - **Network:** none of its own. Quick questions run `claude -p`, which talks to Anthropic just like Claude Code in a terminal.
 
-## Known limits
+### Known limits
 
 - A notification or dropdown terminal can cover the plugin's panels. Dismiss it and the panel is still there.
 - Quick questions can't refresh an expired Claude login. If yours has expired, open Claude Code in a terminal once; the plugin tells you when this is the problem.
