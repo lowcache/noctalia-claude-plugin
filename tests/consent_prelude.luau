@@ -58,6 +58,7 @@ noctalia = {
     __cmds[#__cmds + 1] = cmd
     return true
   end,
+  pluginDir = function() return "/plug dir" end, -- a catalog-style path, with a space
   notifyError = function(_s, _m) end,
   json = {
     decode = function(raw)

@@ -48,6 +48,9 @@ expect("three answers offered", #__buttons(), 3)
 reset(); __put("A", req()); __queue("A"); onOpen("A")
 expect("allow once clicked", __click("Allow once"), true)
 contains("dispatches an allow reply", __cmds[1], "reply 'A' allow")
+contains("replies run the hook where the host says the plugin lives", __cmds[1],
+  "python3 '/plug dir/hooks/consent.py' reply 'A' allow")
+absent("never the dev-install path", __cmds[1], ".local/share/noctalia")
 
 reset(); __put("A", req()); __queue("A"); onOpen("A")
 __click("Always allow")
@@ -57,9 +60,17 @@ reset(); __put("A", req()); __queue("A"); onOpen("A")
 __click("Deny")
 contains("dispatches a deny reply", __cmds[1], "reply 'A' deny")
 
--- The hook path carries $HOME and must expand, but a $HOME with a space must not
--- word-split -- so it is double-quoted, never bare.
-contains("hook path is double-quoted", __cmds[1], '"$HOME/.local/share/noctalia')
+-- The host's plugin path is literal and may hold a space, so it is single-quoted and
+-- never word-splits. Only the no-pluginDir fallback carries $HOME, double-quoted so
+-- it still expands.
+contains("host path is single-quoted", __cmds[1], "python3 '/plug dir/hooks/consent.py' ")
+local saved_dir = noctalia.pluginDir
+noctalia.pluginDir = nil
+reset(); __put("A", req()); __queue("A"); onOpen("A")
+__click("Deny")
+contains("without pluginDir the fallback is double-quoted $HOME", __cmds[1],
+  'python3 "$HOME/.local/share/noctalia/plugins/claude-companion/hooks/consent.py" reply')
+noctalia.pluginDir = saved_dir
 
 -- ── ids are allowlisted, not quoted ──────────────────────────────────────────
 reset()
@@ -183,6 +194,7 @@ onOpen(nil)
 contains("empty state names the waiting observations", __rendered(), "94")
 expect("and offers to fold them in", __click("Promote"), true)
 contains("which runs promote", __last_cmd(), "promote")
+contains("promote runs the host-resolved hook too", __last_cmd(), "python3 '/plug dir/hooks/consent.py' promote")
 
 reset()
 onOpen(nil)
