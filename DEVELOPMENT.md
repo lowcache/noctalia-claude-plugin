@@ -6,6 +6,24 @@ one bug that ever took this plugin down on load was a syntax-level mistake that 
 amount of live testing would have caught, because the shell simply refused to load the
 service and said nothing.
 
+## How it fits together
+
+- `pulse-svc.luau` is a headless service and the single source of truth. Hook events
+  arrive over IPC; every 5 s it also reads Claude Code's session files (hookless
+  detection, liveness, Esc-interrupt correction). It publishes a rollup to the
+  `claude.pulse` shared-state key.
+- `pulse.luau` (bar) and `orb.luau` (desktop) only render `claude.pulse`. The panels
+  (`sessions`, `answer`, `ask`, `consent`) render state and send IPC back; none holds
+  logic of its own.
+- `claude.luau` is the one place that talks to a model: the `/claude` launcher, and a
+  second `[[service]]` registration (`claude-ask`) so the ask panel's poke has an
+  IPC-addressable receiver.
+- `hooks/pulse.py` turns Claude Code hooks into events; `hooks/consent.py` is the
+  approval gate; `hooks/install.py` wires both into `~/.claude/settings.json`;
+  `hooks/pulse-emit` is the agent-agnostic emitter. The event format is in
+  [PROTOCOL.md](PROTOCOL.md).
+- `shim/noctalia-mcp.py` is the MCP server that gives `/claude` sessions desktop tools.
+
 ## The shell
 
 ```sh
@@ -90,6 +108,7 @@ The gates cannot tell you whether a panel renders or an IPC event lands. For tha
 ```sh
 ln -s "$PWD" ~/.local/share/noctalia/plugins/claude-companion
 noctalia msg plugins enable lowcache/claude-companion
+python3 ~/.local/share/noctalia/plugins/claude-companion/hooks/install.py   # hooks point at the symlink
 
 # reload after an edit
 noctalia msg plugins disable lowcache/claude-companion

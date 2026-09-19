@@ -1,10 +1,10 @@
 # Claude Companion — a Claude Code companion for Noctalia v5.
 # Not a chat client: the terminal does the agentic work; this is the shell-side
-# body — senses, hands, and an attention pulse. See README.md for the design.
+# body — senses, hands, and an attention pulse. See DEVELOPMENT.md for the design.
 
 id = "lowcache/claude-companion"
 name = "Claude Companion"
-version = "1.5.1"
+version = "1.6.0"
 # Plugin API level this manifest targets — mandatory as of the Noctalia 5 beta
 # manifest parser (replaces the older min_noctalia gate). 3 is the oldest-supported
 # level and covers every feature this plugin uses ([[panel]], ui controls, plugin IPC

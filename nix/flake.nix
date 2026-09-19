@@ -90,16 +90,18 @@
           runtimeInputs = [
             pkgs.luau
             pkgs.python3
+            pkgs.coreutils
+            pkgs.gnugrep
+            pkgs.gnused
           ];
+          # Suite list comes from scripts/run-widget-specs.sh (D15); a copy here drifted
+          # and silently skipped the consent and ask suites.
           text = ''
             root="''${1:-$PWD}"
-            echo "── pulse-svc ──"; "${pulseSvcRunner pkgs}/bin/pulse-svc-test" "$root"
-            echo "── pulse ──";  "${pulseRunner pkgs}/bin/pulse-test" "$root"
-            echo "── orb ──";    "${orbRunner pkgs}/bin/orb-test" "$root"
-            echo "── answer ──"; "${answerRunner pkgs}/bin/answer-test" "$root"
-            echo "── sessions ──"; "${sessionsRunner pkgs}/bin/sessions-test" "$root"
-            echo "── shim (compositor abstraction) ──"; python3 "$root/tests/shim_spec.py"
-            echo "── manifest (settings contract) ──"; PLUGIN_ROOT="$root" python3 "$root/tests/manifest_spec.py"
+            echo "── widget specs ──"; bash "$root/scripts/run-widget-specs.sh" "$root"
+            for spec in "$root"/tests/*_spec.py; do
+              echo "── $(basename "$spec") ──"; PLUGIN_ROOT="$root" python3 "$spec"
+            done
           '';
         };
     in

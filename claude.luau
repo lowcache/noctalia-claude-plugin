@@ -50,7 +50,7 @@ local ASK_NOTE = table.concat({
 }, " ")
 
 -- claude only; this is the single backend seam.
--- A quick-ask is promised as read-only (README "Usage"), so it must NOT inherit
+-- A quick-ask is promised as read-only (README "Use"), so it must NOT inherit
 -- the user's Claude config, where pre-authorized permissions would let a plain
 -- question run commands or edit files: --tools "" strips every built-in tool,
 -- --strict-mcp-config (with no --mcp-config) strips inherited MCP servers, and

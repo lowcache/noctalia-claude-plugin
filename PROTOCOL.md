@@ -156,6 +156,86 @@ pulse-emit tool_start - < hook.json          # session id from hook JSON
 PULSE_PID=$PPID pulse-emit turn_end aider-$PPID  # retire when that process exits
 ```
 
+## Ready-made adapters
+
+These setups call `pulse-emit` by name, so put it on your PATH once (catalog path shown; use your dev symlink if that's how you installed):
+
+```sh
+ln -s ~/.local/state/noctalia/plugins/materialized/community/claude-companion/hooks/pulse-emit ~/.local/bin/pulse-emit
+```
+
+Each one was checked against that project's current source on 2026-09-19; the opencode plugin was also run live, end to end. What you get differs by agent, because each exposes different hooks.
+
+### Gemini CLI
+
+`~/.gemini/settings.json`. Hooks are on by default, and Gemini expands `$GEMINI_SESSION_ID` (shell-escaped) before running the command. Keep these in your user settings: project-level hooks are blocked in untrusted folders.
+
+```json
+{
+  "hooks": {
+    "BeforeAgent":  [{ "hooks": [{ "type": "command", "command": "pulse-emit turn_start $GEMINI_SESSION_ID" }] }],
+    "BeforeTool":   [{ "matcher": "*", "hooks": [{ "type": "command", "command": "pulse-emit tool_start $GEMINI_SESSION_ID" }] }],
+    "Notification": [{ "hooks": [{ "type": "command", "command": "pulse-emit needs_attention $GEMINI_SESSION_ID" }] }],
+    "AfterAgent":   [{ "hooks": [{ "type": "command", "command": "pulse-emit turn_end $GEMINI_SESSION_ID" }] }],
+    "SessionEnd":   [{ "hooks": [{ "type": "command", "command": "pulse-emit session_end $GEMINI_SESSION_ID" }] }]
+  }
+}
+```
+
+`Notification` only fires for tool-permission prompts, which is exactly the needs-you case.
+
+### Codex CLI
+
+`~/.codex/hooks.json` (Codex's Claude-style hooks, enabled by default in current builds). The session id arrives as JSON on stdin, which is what `pulse-emit`'s `-` session argument reads. Two things to know: Codex shows a **Hooks need review** prompt the first time and runs nothing until you trust them, and this file rejects unknown keys, so don't add comments.
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit":  [{ "hooks": [{ "type": "command", "command": "pulse-emit turn_start -" }] }],
+    "PreToolUse":        [{ "hooks": [{ "type": "command", "command": "pulse-emit tool_start -" }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "pulse-emit needs_attention -" }] }],
+    "Stop":              [{ "hooks": [{ "type": "command", "command": "pulse-emit turn_end -" }] }],
+    "SessionEnd":        [{ "hooks": [{ "type": "command", "command": "pulse-emit session_end -" }] }]
+  }
+}
+```
+
+The older `notify = [...]` setting in `config.toml` still works, but it only fires at the end of a turn and passes JSON as an argument, so the hooks above are the better fit.
+
+### opencode
+
+a plugin at `~/.config/opencode/plugin/pulse.ts`. opencode has no hook for quitting, so the plugin hands over its own process id and the pulse retires the session when opencode exits.
+
+```ts
+// Drives the Noctalia pulse from opencode. pulse-emit must be on PATH.
+export const Pulse = async ({ $ }) => {
+  const emit = (event, sid) =>
+    $`pulse-emit ${event} ${sid}`.env({ ...process.env, PULSE_PID: String(process.pid) }).quiet().nothrow()
+  return {
+    "chat.message": async (input) => { await emit("turn_start", input.sessionID) },
+    "tool.execute.before": async (input) => { await emit("tool_start", input.sessionID) },
+    "permission.ask": async (input) => { await emit("needs_attention", input.sessionID) },
+    event: async ({ event }) => {
+      const p = event.properties
+      if (event.type === "session.idle") await emit("turn_end", p.sessionID)
+      else if (event.type === "session.error" && p.sessionID) await emit("error", p.sessionID)
+      else if (event.type === "session.deleted") await emit("session_end", p.info.id)
+    },
+  }
+}
+```
+
+### aider
+
+`~/.aider.conf.yml`. aider has one hook: a command it runs whenever it's your turn again (a reply finished, or it's asking you to confirm something). It passes no session id, but the command runs as a direct child of aider, so `$PPID` is aider itself: one session per aider, retired when it exits.
+
+```yaml
+notifications: true
+notifications-command: "PULSE_PID=$PPID pulse-emit turn_end aider-$PPID"
+```
+
+Expect less here than elsewhere: a session appears once the first reply lands, there's no working state in between, and that one command can't tell "done" from "please confirm", so it reports done.
+
 ## Control events (not lifecycle)
 
 Everything above describes the eight **lifecycle** events, which say what an agent is
