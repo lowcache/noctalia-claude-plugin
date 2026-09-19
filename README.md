@@ -33,7 +33,7 @@ noctalia msg plugin lowcache/claude-companion:pulse-svc all idle              # 
 
 **Requirements:** Noctalia 5 on niri, Hyprland or Sway, Claude Code, and `python3`. The desktop tools Claude gets also use `playerctl`, `nmcli`, `notify-send` and `ps` when they're installed.
 
-Working on the plugin itself? See [DEVELOPMENT.md](DEVELOPMENT.md) for installing from a clone.
+Working on the plugin itself? See [DEVELOPMENT.md](https://github.com/lowcache/noctalia-claude-plugin/blob/main/DEVELOPMENT.md) for installing from a clone.
 
 ## Use
 
@@ -115,4 +115,4 @@ If this plugin is useful to you, you can [sponsor the work](https://github.com/s
 
 ## License
 
-MIT; see [LICENSE](LICENSE).
+MIT; see [LICENSE](https://github.com/lowcache/noctalia-claude-plugin/blob/main/LICENSE).
